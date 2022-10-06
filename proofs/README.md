@@ -1,11 +1,15 @@
-BrowserSessionSources (all-traces): verified (10 steps)
-BrowserSessionBinding (all-traces): verified (55 steps)
-BrowserSessionUnique (all-traces): verified (10 steps)
-UsernamesUnique (all-traces): verified (6 steps)
-UsernamesServerConfirmed (all-traces): verified (20 steps)
-PasswordsConfidential (all-traces): verified (18 steps)
-SignalKeysUnique (all-traces): verified (6 steps)
-CodeVerifierSecrecy (all-traces): verified (27 steps)
-TokenFormatAndOTPLearning (all-traces): verified (10791 steps)
-CodeIsSingleUse (all-traces): verified (32 steps)
-NonInjectiveAgreement (all-traces): verified (128147 steps)
+## Proof Complexity
+
+| Lemma | Steps |
+| ----- | ----- |
+| BrowserSessionSources | 10 |
+| BrowserSessionBinding | 55 |
+| BrowserSessionUnique | 10 |
+| UsernamesUnique | 6 |
+| UsernamesServerConfirmed | 20 |
+| PasswordsConfidential | 18 |
+| SignalKeysUnique | 6 |
+| CodeVerifierSecrecy | 27 |
+| TokenFormatAndOTPLearning | 10791 |
+| CodeIsSingleUse | 32 |
+| NonInjectiveAgreement | 128147 |
