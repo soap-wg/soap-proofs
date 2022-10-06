@@ -185,9 +185,6 @@ rule OIDCClientInit:
   // This Out fact models that the adversary can access authorization requests
   // (if taken together with the previous Out fact).
   , Out(<hash, nonce, code_challenge>)
-  // This Out fact models that the PKCE flow does not provide any additional
-  // security over the implicit flow.
-  , Out(code_verifier)
   , SessionStore($Initiator, nonce, <$IdP, hash, salt, code_verifier>)
   , Browser($Initiator, $IdP, ~sess) ]
 
