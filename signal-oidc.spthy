@@ -424,20 +424,20 @@ restriction CheckNonceReplay:
 restriction Equality:
   "All x y #i. Eq(x, y) @ #i ==> x = y"
 
-lemma NonInjectiveAgreement:
+lemma SocialAuthentication:
   "   All pkI idp username pkV initiator accountHolder pw skI #i #j #k.
         AssociateAs(pkI, idp, username, pkV) @ #i
         & ClaimSignalKey(initiator, skI) @ #j & pkI = pk(skI)
         & ClaimUsername(accountHolder, idp, username, pw) @ #k
   ==> (Ex salt hash nonce code_challenge sess #k #l #m.
-    initiator = accountHolder
-    & OIDCRequest(initiator, idp, pkV, salt, hash, nonce, code_challenge) @ #k & #k < #i
-    & AuthenticationRequest(sess, idp, hash, nonce, code_challenge) @ #l & #l < #i
-    & AuthenticationResponse(sess, initiator, idp, username) @ #m & #m < #i)
-  | (Ex domain #k. CompromisedDomain(idp, domain) @ #k)
-  | (Ex signalClient domain #k #l. IsSignalClientFor(idp, signalClient) @ #k
-    & CompromisedDomain(signalClient, domain) @ #l)
-  | (Ex party #k. CompromisedAccount(party, idp, username) @ #k)"
+        initiator = accountHolder
+        & OIDCRequest(initiator, idp, pkV, salt, hash, nonce, code_challenge) @ #k & #k < #i
+        & AuthenticationRequest(sess, idp, hash, nonce, code_challenge) @ #l & #l < #i
+        & AuthenticationResponse(sess, initiator, idp, username) @ #m & #m < #i)
+      | (Ex domain #k. CompromisedDomain(idp, domain) @ #k)
+      | (Ex signalClient domain #k #l. IsSignalClientFor(idp, signalClient) @ #k
+        & CompromisedDomain(signalClient, domain) @ #l)
+      | (Ex party #k. CompromisedAccount(party, idp, username) @ #k)"
 
 lemma Executability:
   exists-trace
