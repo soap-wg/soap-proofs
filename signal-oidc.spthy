@@ -4,10 +4,10 @@ begin
 heuristic: o "./oracle.py"
 
 builtins: signing
-functions: fingerprint/1, s256/1, h/2
+functions: fingerprint/1, extract/1, s256/1, h/2
 
 // Fingerprint function only needs to be collision resistant
-equations: fingerprint(x) = x
+equations: extract(fingerprint(x)) = x
 
 rule Phone:
   []
