@@ -45,18 +45,18 @@ rule SignalServer:
 restriction OnlyOnceSignal:
   "All #i #j. OnlyOnceSignal() @ #i & OnlyOnceSignal() @ #j ==> #i = #j"
 
-rule SignalClient:
-  [ !Domain($IdP, ~secret), !Domain($SignalClient, ~domain) ]
-  --[ OnlyOnceSignalClientIdP($IdP)
-    , OnlyOnceSignalClient($SignalClient)
-    , IsSignalClientFor($IdP, $SignalClient) ]->
-  [ !SignalClientDomain($IdP, ~domain) ]
+rule SignalApp:
+  [ !Domain($IdP, ~secret), !Domain($SignalApp, ~domain) ]
+  --[ OnlyOnceSignalAppIdP($IdP)
+    , OnlyOnceSignalApp($SignalApp)
+    , IsSignalAppFor($IdP, $SignalApp) ]->
+  [ !SignalAppDomain($IdP, ~domain) ]
 
-restriction OnlyOnceSignalClientIdP:
-  "All idp #i #j. OnlyOnceSignalClientIdP(idp) @ #i & OnlyOnceSignalClientIdP(idp) @ #j ==> #i = #j"
+restriction OnlyOnceSignalAppIdP:
+  "All idp #i #j. OnlyOnceSignalAppIdP(idp) @ #i & OnlyOnceSignalAppIdP(idp) @ #j ==> #i = #j"
 
-restriction OnlyOnceSignalClient:
-  "All c #i #j. OnlyOnceSignalClient(c) @ #i & OnlyOnceSignalClient(c) @ #j ==> #i = #j"
+restriction OnlyOnceSignalApp:
+  "All c #i #j. OnlyOnceSignalApp(c) @ #i & OnlyOnceSignalApp(c) @ #j ==> #i = #j"
 
 // Signal registration and channel
 functions: signalMsg/3, signalRead/2
@@ -64,13 +64,13 @@ equations: signalRead(signalMsg(~senderSk, pk(~receiverSk), m), ~receiverSk) = m
 
 rule SignalRegister:
   [ Fr(sk), Fr(~sess), !Phone($A, $Number), !SignalDomain(~signal) ]
-  --[ SignalKeyClient($A, sk) ]->
+  --[ SignalKeyApp($A, sk) ]->
   // Using !SignalDomain assumes that the adversary is not able to
   // social-engineer their victim into using their website or app when signing
   // up for Signal
   [ Out(tlsClientMsg(~sess, cert(~signal), <'signal_req', $Number, pk(sk)>))
   , Out(pk(sk))
-  , St_SignalReg_Client($A, ~sess, sk) ]
+  , St_SignalReg_App($A, ~sess, sk) ]
 
 rule SignalChallenge:
   [ !SignalDomain(~signal)
@@ -83,10 +83,10 @@ rule SignalChallenge:
 rule SignalRespond:
   [ In(<'otp', challenge>)
   , !SignalDomain(~signal)
-  , St_SignalReg_Client($A, ~sess, sk) ]
+  , St_SignalReg_App($A, ~sess, sk) ]
   --[ OTPRespond(challenge) ]->
   [ Out(tlsClientMsg(~sess, cert(~signal), <'otp_respond', challenge>))
-  , St_SignalReg_ClientWait($A, ~sess, sk) ]
+  , St_SignalReg_AppWait($A, ~sess, sk) ]
 
 rule SignalAck:
   [ !SignalDomain(~signal)
@@ -103,13 +103,13 @@ restriction KeysUnique:
 
 rule SignalFin:
   [ !SignalDomain(~signal)
-  , St_SignalReg_ClientWait($A, ~sess, sk)
+  , St_SignalReg_AppWait($A, ~sess, sk)
   , In(tlsServerMsg(~sess, ~signal, 'signal_ack')) ]
   --[ ClaimSignalKey($A, sk) ]->
-  [ !SignalLtkClient($A, sk) ]
+  [ !SignalLtkApp($A, sk) ]
 
 rule SignalCompromise:
-  [ !SignalLtkClient($A, ~sk) ]
+  [ !SignalLtkApp($A, ~sk) ]
   --[ CompromisedSignal($A, ~sk) ]->
   [ Out(~sk) ]
 
@@ -127,9 +127,9 @@ rule IdPPkDistribute:
 
 rule IdPSignUpInit:
   [ Fr(pw), Fr(~sess), !Domain($IdP, ~IdPKey) ]
-  --[ UsernameClient($A, $IdP, $Username, pw) ]->
+  --[ UsernameApp($A, $IdP, $Username, pw) ]->
   [ Out(tlsClientMsg(~sess, cert(~IdPKey), <'sign_up', $Username, pw>))
-  , St_IdPRegistration_Client(~sess, $A, $IdP, $Username, pw) ]
+  , St_IdPRegistration_App(~sess, $A, $IdP, $Username, pw) ]
 
 rule IdPSignUpServer:
   [ !Domain($IdP, ~IdPKey)
@@ -143,14 +143,14 @@ restriction AccountsUnique:
   "All idp u #a #b. AccountsUnique(idp, u) @ #a & AccountsUnique(idp, u) @ #b ==> #a = #b"
 
 rule IdPSignUpFin:
-  [ St_IdPRegistration_Client(~sess, $A, $IdP, $Username, pw)
+  [ St_IdPRegistration_App(~sess, $A, $IdP, $Username, pw)
   , !Domain($IdP, ~IdPKey)
   , In(tlsServerMsg(~sess, ~IdPKey, 'idp_ack')) ]
   --[ ClaimUsername($A, $IdP, $Username, pw) ]->
-  [ !IdPAccountClient($A, $IdP, $Username, pw) ]
+  [ !IdPAccountApp($A, $IdP, $Username, pw) ]
 
 rule IdPAccountCompromise:
-  [ !IdPAccountClient($A, $IdP, $Username, ~pw) ]
+  [ !IdPAccountApp($A, $IdP, $Username, ~pw) ]
   --[ CompromisedAccount($A, $IdP, $Username) ]->
   [ Out(~pw) ]
 
@@ -169,36 +169,36 @@ restriction OnlyOnceInitSessionStore:
   "All u #x #y. OnlyOnceInitSessionStore(u) @ #x & OnlyOnceInitSessionStore(u) @ #y ==> #x = #y"
 
 // OpenID Connect Auth code + PKCE flow
-rule OIDCClientInit:
-  let fp = fingerprint(<pk(skInitiator), pkVerifier>)
+rule OIDCAppInit:
+  let fp = fingerprint(<pk(skProver), pkVerifier>)
       hash = h(fp, salt)
       code_challenge = s256(code_verifier)
   in
   [ !Domain($IdP, ~IdPKey)
-  , !SignalLtkClient($Initiator, skInitiator)
-  , !IdPAccountClient($Initiator, $IdP, username, pw)
+  , !SignalLtkApp($Prover, skProver)
+  , !IdPAccountApp($Prover, $IdP, username, pw)
   , !SignalLtkServer(numVerifier, pkVerifier)
-  , SessionStore($Initiator, drop1, drop2)
+  , SessionStore($Prover, drop1, drop2)
   , Fr(salt), Fr(nonce), Fr(code_verifier), Fr(~sess) ]
-  --[ OIDCRequest($Initiator, $IdP, pkVerifier, salt, hash, nonce, code_challenge)
+  --[ OIDCRequest($Prover, $IdP, pkVerifier, salt, hash, nonce, code_challenge)
     , GenNonce(nonce)
-    , GenBrowserSession($Initiator, $IdP, ~sess)
+    , GenBrowserSession($Prover, $IdP, ~sess)
     , GenerateCodeVerifierFor(code_verifier, $IdP) ]->
   [ Out(tlsClientMsg(~sess, cert(~IdPKey), <'oidc_req', hash, nonce, code_challenge>))
   // This Out fact models that the adversary can access authorization requests
   // (if taken together with the previous Out fact).
   , Out(<hash, nonce, code_challenge>)
-  , SessionStore($Initiator, nonce, <$IdP, hash, salt, code_verifier>)
-  , Browser($Initiator, $IdP, ~sess) ]
+  , SessionStore($Prover, nonce, <$IdP, hash, salt, code_verifier>)
+  , Browser($Prover, $IdP, ~sess) ]
 
 rule OIDCAdversaryInit:
   [ !Domain($IdP, ~IdPKey)
-  , In(<$IdP, $Initiator, hash, nonce, code_challenge>)
+  , In(<$IdP, $Prover, hash, nonce, code_challenge>)
   , Fr(~sess) ]
   --[ AdversaryOIDCRequest()
-    , GenBrowserSession($Initiator, $IdP, ~sess) ]->
+    , GenBrowserSession($Prover, $IdP, ~sess) ]->
   [ Out(tlsClientMsg(~sess,cert(~IdPKey), <'oidc_req', hash, nonce, code_challenge>))
-  , Browser($Initiator, $IdP, ~sess) ]
+  , Browser($Prover, $IdP, ~sess) ]
 
 rule OIDCIdPInit:
   [ !Domain($IdP, ~IdPKey)
@@ -208,15 +208,15 @@ rule OIDCIdPInit:
   [ Out(tlsServerMsg(~sess, ~IdPKey, 'auth_req'))
   , St_OIDCServer_Auth($IdP, ~sess, hash, nonce, code_challenge) ]
 
-rule OIDCClientLogin:
-  [ Browser($Initiator, $IdP, ~sess)
+rule OIDCAppLogin:
+  [ Browser($Prover, $IdP, ~sess)
   , !Domain($IdP, ~IdPKey)
   , In(tlsServerMsg(~sess, ~IdPKey, 'auth_req'))
-  , !IdPAccountClient($Initiator, $IdP, $Username, pw) ]
-  --[ AuthenticationResponse(~sess, $Initiator, $IdP, $Username)
-    , UseBrowserSession($Initiator, $IdP, ~sess) ]->
+  , !IdPAccountApp($Prover, $IdP, $Username, pw) ]
+  --[ AuthenticationResponse(~sess, $Prover, $IdP, $Username)
+    , UseBrowserSession($Prover, $IdP, ~sess) ]->
   [ Out(tlsClientMsg(~sess, cert(~IdPKey), <'login', $Username, pw>))
-  , Browser($Initiator, $IdP, ~sess) ]
+  , Browser($Prover, $IdP, ~sess) ]
 
 lemma BrowserSessionSources[reuse,use_induction]:
   "   All user domain sess #x. UseBrowserSession(user, domain, sess) @ #x
@@ -264,12 +264,12 @@ rule OIDCIdPIssueCode:
   [ St_OIDCServer_Auth($IdP, ~sess, hash, nonce, code_challenge)
   , In(tlsClientMsg(~sess, cert(~IdPKey), <'login', $Username, pw>))
   , !IdPAccountServer($IdP, $Username, pw), !IdPLtk($IdP, sk)
-  , !Domain($IdP, ~IdPKey), !SignalClientDomain($IdP, ~signalClient)
+  , !Domain($IdP, ~IdPKey), !SignalAppDomain($IdP, ~signalApp)
   , Fr(~code) ]
   --[ IdPIssueCode($IdP, $Username, ~code)
     , IsNonce(nonce)
     , GenCode($IdP, ~code) ]->
-  [ Out(browserForward(~sess, cert(~signalClient), <'code', ~code, nonce>))
+  [ Out(browserForward(~sess, cert(~signalApp), <'code', ~code, nonce>))
   , St_OIDCIdP_Code($IdP, $Username, ~code, hash, nonce, code_challenge) ]
 
 // It is necessary handle forwards from the adversary dedicatedly, because
@@ -277,27 +277,27 @@ rule OIDCIdPIssueCode:
 // be unrealistic, though.
 rule LinkClick:
   [ Fr(~sess), In(<code, nonce>), !Domain($Party, ~domain) ]
-  --[ GenBrowserSession($Initiator, $Party, ~sess) ]->
+  --[ GenBrowserSession($Prover, $Party, ~sess) ]->
   [ Out(browserForward(~sess, cert(~domain), <'code', code, nonce>))
-  , Browser($Initiator, $Party, ~sess) ]
+  , Browser($Prover, $Party, ~sess) ]
 
-rule OIDCClientCodeRedirect:
+rule OIDCAppCodeRedirect:
   // Do not pattern match who the browser session was initiated for. The Signal
-  // client cannot verify this. It is only critical that the adversary could not
+  // app cannot verify this. It is only critical that the adversary could not
   // choose the session.
-  [ Browser($Initiator, drop, ~sess)
-  , In(browserForward(~sess, cert(~signalClient), <'code', code, nonce>))
-  , !SignalClientDomain($IdP, ~signalClient)
+  [ Browser($Prover, drop, ~sess)
+  , In(browserForward(~sess, cert(~signalApp), <'code', code, nonce>))
+  , !SignalAppDomain($IdP, ~signalApp)
   , !Domain($IdP, ~IdPKey)
-  , SessionStore($Initiator, nonce, <$IdP, hash, salt, code_verifier>)
+  , SessionStore($Prover, nonce, <$IdP, hash, salt, code_verifier>)
   , Fr(~sessPost) ]
-  --[ ClientReceiveCode($Initiator, $IdP, code)
-    , SelfIssued($Initiator, nonce)
+  --[ AppReceiveCode($Prover, $IdP, code)
+    , SelfIssued($Prover, nonce)
     , Neq(nonce, 'null')
     , IsCode(code) ]->
   [ Out(tlsClientMsg(~sessPost, cert(~IdPKey), <'token_req', code, code_verifier>))
-  , St_OIDCClient_CodeReq($Initiator, $IdP, ~sessPost, hash, salt, code)
-  , SessionStore($Initiator, 'null', 'null') ]
+  , St_OIDCApp_CodeReq($Prover, $IdP, ~sessPost, hash, salt, code)
+  , SessionStore($Prover, 'null', 'null') ]
 
 rule OIDCIdPTokenIssue:
   let tokenBody = <$IdP, $Username, nonce, hash>
@@ -365,24 +365,24 @@ rule pk_req:
 
 rule OIDCTokenForward:
   let body = <$IdP, username, nonce, hash>
-      fp = fingerprint(<pk(skInitiator), pkVerifier>)
+      fp = fingerprint(<pk(skProver), pkVerifier>)
       token = <body, signature>
   in
-  [ St_OIDCClient_CodeReq($Initiator, $IdP, ~sessPost, hash, salt, code)
+  [ St_OIDCApp_CodeReq($Prover, $IdP, ~sessPost, hash, salt, code)
   , !Domain($IdP, ~IdPKey)
   , In(tlsServerMsg(~sess, ~IdPKey, <'pk_response', pkIdP>))
   // We do not check the nonce in the ID token. This is to highlight that the
   // inclusion of a true nonce in the ID token is not strictly necessary in the
   // protocols design.
   , In(tlsServerMsg(~sessPost, ~IdPKey, <'token', <<$IdP, username, nonce, hash>, signature>>))
-  , !SignalLtkClient($Initiator, skInitiator)
+  , !SignalLtkApp($Prover, skProver)
   , !SignalLtkServer(phone, pkVerifier) ]
   --[ Eq(h(fp, salt), hash)
     , Eq(verify(signature, body, pkIdP), true)
-    , Forward($Initiator, token)
+    , Forward($Prover, token)
     , IsToken(token)
     , UsedCode(code) ]->
-  [ Out(signalMsg(skInitiator, pkVerifier, <'fwd_token', token, salt>))
+  [ Out(signalMsg(skProver, pkVerifier, <'fwd_token', token, salt>))
   // Sending the code models that the adversary can access the authorization
   // response after the fact.
   , Out(code) ]
@@ -392,13 +392,13 @@ lemma CodeIsSingleUse[use_induction,reuse]:
       & UseCode(code) @ #x & UseCode(code) @ #y
     ==> #x = #y
       | (Ex domain #x. CompromisedDomain(idp, domain) @ #x)
-      | (Ex signalClient domain #x #y. IsSignalClientFor(idp, signalClient) @ #x
-        & CompromisedDomain(signalClient, domain) @ #y)"
+      | (Ex signalApp domain #x #y. IsSignalAppFor(idp, signalApp) @ #x
+        & CompromisedDomain(signalApp, domain) @ #y)"
 
 rule OIDCTokenReceive:
   let token = <<IdP, username, nonce, hash>, signature>
   in
-  [ !SignalLtkClient($Verifier, skVerifier)
+  [ !SignalLtkApp($Verifier, skVerifier)
   , In(signalMsg(skSender, pk(skVerifier), <'fwd_token', <<IdP, username, nonce, hash>, signature>, salt>))
   , !Domain(IdP, ~IdPKey)
   , Fr(~sess) ]
@@ -408,15 +408,15 @@ rule OIDCTokenReceive:
 
 rule OIDCTokenVerify:
   let body = <IdP, username, nonce, hash>
-      fp = fingerprint(<pkInitiator, pk(skVerifier)>)
+      fp = fingerprint(<pkProver, pk(skVerifier)>)
   in
-  [ St_OIDCVerifier($Verifier, ~sess, pkInitiator, skVerifier, <<IdP, username, nonce, hash>, signature>, salt)
+  [ St_OIDCVerifier($Verifier, ~sess, pkProver, skVerifier, <<IdP, username, nonce, hash>, signature>, salt)
   , !Domain(IdP, ~IdPKey)
   , In(tlsServerMsg(~sess, ~IdPKey, <'pk_response', pkIdP>)) ]
   --[ Eq(h(fp, salt), hash)
     , Eq(verify(signature, body, pkIdP), true)
     , DidNotIssueSelf($Verifier, nonce)
-    , AssociateAs(pkInitiator, IdP, username, pk(skVerifier)) ]->
+    , AssociateAs(pkProver, IdP, username, pk(skVerifier)) ]->
   []
 
 restriction CheckNonceReplay:
@@ -428,55 +428,55 @@ restriction Equality:
   "All x y #i. Eq(x, y) @ #i ==> x = y"
 
 lemma SocialAuthentication:
-  "   All pkI idp username pkV initiator accountHolder pw skI #i #j #k.
+  "   All pkI idp username pkV prover accountHolder pw skI #i #j #k.
         AssociateAs(pkI, idp, username, pkV) @ #i
-        & ClaimSignalKey(initiator, skI) @ #j & pkI = pk(skI)
+        & ClaimSignalKey(prover, skI) @ #j & pkI = pk(skI)
         & ClaimUsername(accountHolder, idp, username, pw) @ #k
   ==> (Ex salt hash nonce code_challenge sess #k #l #m.
-        initiator = accountHolder
-        & OIDCRequest(initiator, idp, pkV, salt, hash, nonce, code_challenge) @ #k & #k < #i
+        prover = accountHolder
+        & OIDCRequest(prover, idp, pkV, salt, hash, nonce, code_challenge) @ #k & #k < #i
         & AuthenticationRequest(sess, idp, hash, nonce, code_challenge) @ #l & #l < #i
-        & AuthenticationResponse(sess, initiator, idp, username) @ #m & #m < #i)
+        & AuthenticationResponse(sess, prover, idp, username) @ #m & #m < #i)
       | (Ex domain #k. CompromisedDomain(idp, domain) @ #k)
-      | (Ex signalClient domain #k #l. IsSignalClientFor(idp, signalClient) @ #k
-        & CompromisedDomain(signalClient, domain) @ #l)
+      | (Ex signalApp domain #k #l. IsSignalAppFor(idp, signalApp) @ #k
+        & CompromisedDomain(signalApp, domain) @ #l)
       | (Ex party #k. CompromisedAccount(party, idp, username) @ #k)"
 
 lemma Executability:
   exists-trace
-  "Ex initiator initiatorNum initiatorSk verifier verifierNum verifierSk idp
+  "Ex prover proverNum proverSk verifier verifierNum verifierSk idp
     salt hash nonce code_verifier session username pw code token idpSk body
     signature fp
     #a #b #c #d #e #f #g #h #i #j #k #l #m #n #o #p #q #r #s #t.
-    // Initiator signal account
-    ClaimNumber(initiator, initiatorNum) @ #a
-    & SignalKeyClient(initiator, initiatorSk) @ #b
-    & SignalKeyServer(initiatorNum, pk(initiatorSk)) @ #c
-    & ClaimSignalKey(initiator, initiatorSk) @ #d
-    & (not Ex #x. CompromisedSignal(initiator, initiatorSk) @ #x)
+    // Prover signal account
+    ClaimNumber(prover, proverNum) @ #a
+    & SignalKeyApp(prover, proverSk) @ #b
+    & SignalKeyServer(proverNum, pk(proverSk)) @ #c
+    & ClaimSignalKey(prover, proverSk) @ #d
+    & (not Ex #x. CompromisedSignal(prover, proverSk) @ #x)
     // Verifier signal account
     & ClaimNumber(verifier, verifierNum) @ #e
-    & SignalKeyClient(verifier, verifierSk) @ #f
+    & SignalKeyApp(verifier, verifierSk) @ #f
     & SignalKeyServer(verifierNum, pk(verifierSk)) @ #g
     & ClaimSignalKey(verifier, verifierSk) @ #h
     & (not Ex #x. CompromisedSignal(verifier, verifierSk) @ #x)
-    // Initiator IdP account
-    & UsernameClient(initiator, idp, username, pw) @ #i
+    // Prover IdP account
+    & UsernameApp(prover, idp, username, pw) @ #i
     & UsernameServer(idp, username, pw) @ #j
-    & ClaimUsername(initiator, idp, username, pw) @ #k
-    & (not Ex #x. CompromisedAccount(initiator, idp, username) @ #x)
+    & ClaimUsername(prover, idp, username, pw) @ #k
+    & (not Ex #x. CompromisedAccount(prover, idp, username) @ #x)
     // Flow
-    & OIDCRequest(initiator, idp, pk(verifierSk), salt, hash, nonce, s256(code_verifier)) @ #l
+    & OIDCRequest(prover, idp, pk(verifierSk), salt, hash, nonce, s256(code_verifier)) @ #l
     & (not Ex a b c d e f g #x. OIDCRequest(a, b, c, d, e, f, g) @ #x & not (#l = x))
     & (not Ex #x. AdversaryOIDCRequest() @ #x)
     & AuthenticationRequest(session, idp, hash, nonce, s256(code_verifier)) @ #m
     & (not Ex a b c d e #x. AuthenticationRequest(a, b, c, d, e) @ #x & not (#m = #x))
-    & AuthenticationResponse(session, initiator, idp, username) @ #n
+    & AuthenticationResponse(session, prover, idp, username) @ #n
     & (not Ex a b c d #x. AuthenticationResponse(a, b, c, d) @ #x & not (#n = #x))
     & IdPIssueCode(idp, username, code) @ #o
     & (not Ex a b c #x. IdPIssueCode(a, b, c) @ #x & not (#o = #x))
-    & ClientReceiveCode(initiator, idp, code) @ #p
-    & (not Ex a b c #x. ClientReceiveCode(a, b, c) @ #x & not (#p = #x))
+    & AppReceiveCode(prover, idp, code) @ #p
+    & (not Ex a b c #x. AppReceiveCode(a, b, c) @ #x & not (#p = #x))
     & IdPIssueToken(token) @ #q
     & (not Ex a #x. IdPIssueToken(a) @ #x & not (#q = #x))
     & ClaimIdPKey(idp, idpSk) @ #r
@@ -484,15 +484,15 @@ lemma Executability:
     & token = <body, signature>
     & body = <idp, username, nonce, hash>
     & hash = h(fp, salt)
-    & fp = fingerprint(<pk(initiatorSk), pk(verifierSk)>)
+    & fp = fingerprint(<pk(proverSk), pk(verifierSk)>)
     & signature = sign(body, idpSk)
-    & Forward(initiator, token) @ #s
+    & Forward(prover, token) @ #s
     & (not Ex a b #x. Forward(a, b) @ #x & not (#s = #x))
-    & AssociateAs(pk(initiatorSk), idp, username, pk(verifierSk)) @ #t
+    & AssociateAs(pk(proverSk), idp, username, pk(verifierSk)) @ #t
     & (not Ex a b c d #x. AssociateAs(a, b, c, d) @ #x & not (#t = #x))
     & (not Ex signal sk #x #y. IsSignal(signal) @ #x
       & CompromisedDomain(signal, sk) @ #y)
-    & (not Ex client sk #x #y. IsSignalClientFor(idp, client) @ #x
-      & CompromisedDomain(client, sk) @ #y)"
+    & (not Ex app sk #x #y. IsSignalAppFor(idp, app) @ #x
+      & CompromisedDomain(app, sk) @ #y)"
 
 end
