@@ -4,7 +4,10 @@ begin
 heuristic: o "./oracle.py"
 
 builtins: signing
-functions: trim/1, s256/1, h/2
+functions: fingerprint/1, s256/1, h/2
+
+// Fingerprint function only needs to be collision resistant
+equations: fingerprint(x) = x
 
 rule Phone:
   []
@@ -167,7 +170,7 @@ restriction OnlyOnceInitSessionStore:
 
 // OpenID Connect Auth code + PKCE flow
 rule OIDCClientInit:
-  let fp = <trim(pk(skInitiator)), trim(pkVerifier)>
+  let fp = fingerprint(<pk(skInitiator), pkVerifier>)
       hash = h(fp, salt)
       code_challenge = s256(code_verifier)
   in
@@ -362,7 +365,7 @@ rule pk_req:
 
 rule OIDCTokenForward:
   let body = <$IdP, username, nonce, hash>
-      fp = <trim(pk(skInitiator)), trim(pkVerifier)>
+      fp = fingerprint(<pk(skInitiator), pkVerifier>)
       token = <body, signature>
   in
   [ St_OIDCClient_CodeReq($Initiator, $IdP, ~sessPost, hash, salt, code)
@@ -405,7 +408,7 @@ rule OIDCTokenReceive:
 
 rule OIDCTokenVerify:
   let body = <IdP, username, nonce, hash>
-      fp = <trim(pkInitiator), trim(pk(skVerifier))>
+      fp = fingerprint(<pkInitiator, pk(skVerifier)>)
   in
   [ St_OIDCVerifier($Verifier, ~sess, pkInitiator, skVerifier, <<IdP, username, nonce, hash>, signature>, salt)
   , !Domain(IdP, ~IdPKey)
@@ -443,7 +446,7 @@ lemma Executability:
   exists-trace
   "Ex initiator initiatorNum initiatorSk verifier verifierNum verifierSk idp
     salt hash nonce code_verifier session username pw code token idpSk body
-    signature fingerprint
+    signature fp
     #a #b #c #d #e #f #g #h #i #j #k #l #m #n #o #p #q #r #s #t.
     // Initiator signal account
     ClaimNumber(initiator, initiatorNum) @ #a
@@ -480,8 +483,8 @@ lemma Executability:
     & (not Ex sk #x. CompromisedDomain(idp, sk) @ #x)
     & token = <body, signature>
     & body = <idp, username, nonce, hash>
-    & hash = h(fingerprint, salt)
-    & fingerprint = <trim(pk(initiatorSk)), trim(pk(verifierSk))>
+    & hash = h(fp, salt)
+    & fp = fingerprint(<pk(initiatorSk), pk(verifierSk)>)
     & signature = sign(body, idpSk)
     & Forward(initiator, token) @ #s
     & (not Ex a b #x. Forward(a, b) @ #x & not (#s = #x))
