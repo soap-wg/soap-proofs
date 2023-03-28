@@ -64,7 +64,7 @@ equations: signalRead(signalMsg(~senderSk, pk(~receiverSk), m), ~receiverSk) = m
 
 rule SignalRegister:
   [ Fr(sk), Fr(~sess), !Phone($A, $Number), !SignalDomain(~signal) ]
-  --[ SignalKeyApp($A, sk) ]->
+  --[ IsSignalKey(sk) ]->
   // Using !SignalDomain assumes that the adversary is not able to
   // social-engineer their victim into using their website or app when signing
   // up for Signal
@@ -108,6 +108,11 @@ rule SignalFin:
   --[ ClaimSignalKey($A, sk) ]->
   [ !SignalLtkApp($A, sk) ]
 
+rule SignalKeyRequest:
+  [ Fr(~sess), !SignalLtkServer(phone, ltk), !SignalDomain(~signal) ]
+  --[ ShareSignalKey(ltk) ]->
+  [ Out(tlsServerMsg(~sess, ~signal, <'signal_pk_response', phone, ltk>)) ]
+
 rule SignalCompromise:
   [ !SignalLtkApp($A, ~sk) ]
   --[ CompromisedSignal($A, ~sk) ]->
@@ -120,10 +125,9 @@ rule IdPSetup:
   [ !IdPLtk($IdP, sk), Out(pk(sk)) ]
 
 rule IdPPkDistribute:
-  [ !IdPLtk($IdP, sk), !Domain($IdP, ~IdPKey)
-  , In(tlsClientMsg(~sess, cert(~IdPKey), 'pk_req')) ]
+  [ Fr(~sess), !IdPLtk($IdP, sk), !Domain($IdP, ~IdPKey) ]
   -->
-  [ Out(tlsServerMsg(~sess, ~IdPKey, <'pk_response', pk(sk)>)) ]
+  [ Out(tlsServerMsg(~sess, ~IdPKey, <'idp_pk_response', pk(sk)>)) ]
 
 rule IdPSignUpInit:
   [ Fr(pw), Fr(~sess), !Domain($IdP, ~IdPKey) ]
@@ -185,9 +189,10 @@ rule OIDCAppLaunchBrowser:
       code_challenge = s256(code_verifier)
   in
   [ !Domain($IdP, ~IdPKey)
+  , !SignalDomain(~signal)
   , !SignalLtkApp($Prover, skProver)
   , !IdPAccountApp($Prover, $IdP, username, pw)
-  , !SignalLtkServer(numVerifier, pkVerifier)
+  , In(tlsServerMsg(~sessPk, ~signal, <'signal_pk_response', phone, pkVerifier>))
   , SessionStore($Prover, drop1, drop2)
   , Fr(salt), Fr(nonce), Fr(code_verifier), Fr(~sess) ]
   --[ OIDCRequest($Prover, $IdP, pkVerifier, salt, hash, nonce, code_challenge)
@@ -348,12 +353,14 @@ lemma TokenFormatAndOTPLearning[sources]:
         (Ex #j. OTPChallenge(chall) @ #j & #j < #i)
         | (Ex #j. !KU(chall) @ #j & #j < #i)
       )
+  ) & (
+    All ltk #i.
+          ShareSignalKey(ltk) @ #i
+      ==> (
+        (Ex sk #j. IsSignalKey(sk) @ #j & ltk = pk(sk))
+        | (Ex #j. !KU(ltk) @ #j & #j < #i)
+      )
   )"
-
-rule pk_req:
-  [ Fr(~sess), !Domain($IdP, ~IdPKey) ]
-  -->
-  [ Out(tlsClientMsg(~sess, cert(~IdPKey), 'pk_req')) ]
 
 rule OIDCTokenForward:
   let body = <$IdP, username, nonce, hash>
@@ -362,13 +369,14 @@ rule OIDCTokenForward:
   in
   [ St_OIDCApp_CodeReq($Prover, $IdP, ~sessPost, hash, salt, code)
   , !Domain($IdP, ~IdPKey)
-  , In(tlsServerMsg(~sess, ~IdPKey, <'pk_response', pkIdP>))
+  , !SignalDomain(~signal)
+  , In(tlsServerMsg(~sess1, ~IdPKey, <'idp_pk_response', pkIdP>))
+  , In(tlsServerMsg(~sess2, ~signal, <'signal_pk_response', phone, pkVerifier>))
   // We do not check the nonce in the ID token. This is to highlight that the
   // inclusion of a true nonce in the ID token is not strictly necessary in the
   // protocols design.
   , In(tlsServerMsg(~sessPost, ~IdPKey, <'token', <<$IdP, username, nonce, hash>, signature>>))
-  , !SignalLtkApp($Prover, skProver)
-  , !SignalLtkServer(phone, pkVerifier) ]
+  , !SignalLtkApp($Prover, skProver) ]
   --[ Eq(h(fp, salt), hash)
     , Eq(verify(signature, body, pkIdP), true)
     , Forward($Prover, token)
@@ -392,19 +400,17 @@ rule OIDCTokenReceive:
   in
   [ !SignalLtkApp($Verifier, skVerifier)
   , In(signalMsg(skSender, pk(skVerifier), <'fwd_token', <<IdP, username, nonce, hash>, signature>, salt>))
-  , !Domain(IdP, ~IdPKey)
-  , Fr(~sess) ]
+  , !Domain(IdP, ~IdPKey) ]
   -->
-  [ St_OIDCVerifier($Verifier, ~sess, pk(skSender), skVerifier, token, salt)
-  , Out(tlsClientMsg(~sess, cert(~IdPKey), 'pk_req')) ]
+  [ St_OIDCVerifier($Verifier, pk(skSender), skVerifier, token, salt) ]
 
 rule OIDCTokenVerify:
   let body = <IdP, username, nonce, hash>
       fp = fingerprint(<pkProver, pk(skVerifier)>)
   in
-  [ St_OIDCVerifier($Verifier, ~sess, pkProver, skVerifier, <<IdP, username, nonce, hash>, signature>, salt)
+  [ St_OIDCVerifier($Verifier, pkProver, skVerifier, <<IdP, username, nonce, hash>, signature>, salt)
   , !Domain(IdP, ~IdPKey)
-  , In(tlsServerMsg(~sess, ~IdPKey, <'pk_response', pkIdP>)) ]
+  , In(tlsServerMsg(~sess, ~IdPKey, <'idp_pk_response', pkIdP>)) ]
   --[ Eq(h(fp, salt), hash)
     , Eq(verify(signature, body, pkIdP), true)
     , DidNotIssueSelf($Verifier, nonce)
