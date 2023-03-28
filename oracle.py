@@ -50,11 +50,12 @@ if argv[1] == 'TokenFormatAndOTPLearning':
     'St_OIDCIdP_Code',
     re.compile('SessionStore\(.+nonce'),
     '\'oidc_req\'',
-    '\'auth_req\'',
     '\'login\'',
+    '\'auth_req\'',
     '\'code\'',
     '\'token_req\'',
     '\'token\'',
+    re.compile('tlsClientMsg.+<\'signal_req\', \$Number, ltk>'),
     'tlsClientMsg',  # lowest priority
   ], lines)
 elif argv[1] in [
@@ -94,8 +95,9 @@ elif argv[1] == 'CodeIsSingleUse':
     re.compile(r'#\w\.?\d* < #\w\.?\d*'),
     'St_',
   ], lines)
-elif argv[1] == 'NonInjectiveAgreement':
+elif argv[1] == 'SocialAuthentication':
   match = matchAgainstList([
+    'St_',
     '!Domain',
     re.compile(r'GenBrowserSession\(.+,.+, ~(IdPKey|sessPost|signalClient|code|domain)'),
     re.compile(r'tlsClientMsg\(~(IdPKey|sessPost|signalClient|code|domain)\.?\d*,.+,\s*<\'oidc_req\''),
@@ -134,14 +136,12 @@ elif argv[1] == 'Executability':
     for (num, goal) in lines:
       if matchesNone(deferList, (num, goal)):
         return num
-    return '0'
+    return matchAgainstList(deferList, lines)
 
   match = defer([
-    'St_OIDCClient_CodeReq(',
-    '\'token_req\'',
-    '\'fwd_token\'',
-    '\'code\'',
-    '\'pk_response\'',
+    '!KU',
+    re.compile('^!'),
+    'GenBrowserSession(',
     'Browser(',
     'SessionStore(',
   ], lines)
