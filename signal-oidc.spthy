@@ -15,13 +15,13 @@ rule Phone:
   [ !Phone($A, $Number) ]
 
 // TLS Channel
-functions: cert/1, tlsClientMsg/3, tlsServerMsg/3, tlsClientReceive/2, tlsServerReceive/2, browserForward/3, forwardReceive/2
+functions: cert/1, tlsClientMsg/3, tlsServerMsg/3, tlsClientReceive/2, tlsServerReceive/2, browserLaunch/3, forwardReceive/2
 equations:
   tlsClientReceive(tlsServerMsg(~sess, ~domain, m), ~sess) = m
 , tlsServerReceive(tlsClientMsg(~sess, cert(~domain), m), ~domain) = m
 , tlsServerReceive(tlsClientMsg(~sess, cert(~domain), m), ~domain) = ~sess
-, forwardReceive(browserForward(~sess, cert(~domain), m), ~domain) = m
-, forwardReceive(browserForward(~sess, cert(~domain), m), ~domain) = ~sess
+, forwardReceive(browserLaunch(~sess, cert(~domain), m), ~domain) = m
+, forwardReceive(browserLaunch(~sess, cert(~domain), m), ~domain) = ~sess
 
 rule TLSSetup:
   [ Fr(~domain) ]
@@ -168,8 +168,18 @@ rule ClearSessionStore:
 restriction OnlyOnceInitSessionStore:
   "All u #x #y. OnlyOnceInitSessionStore(u) @ #x & OnlyOnceInitSessionStore(u) @ #y ==> #x = #y"
 
+// It is necessary handle forwards from the adversary dedicatedly, because
+// otherwise, the adversary can choose the session they forward to. This would
+// be unrealistic, though.
+rule LinkClick:
+  [ Fr(~sess), In(m), !Domain($Party, ~domain) ]
+  --[ GenBrowserSession($Prover, $Party, ~sess)
+    , AdversaryLinkClick() ]->
+  [ Out(browserLaunch(~sess, cert(~domain), m))
+  , Browser($Prover, $Party, ~sess) ]
+
 // OpenID Connect Auth code + PKCE flow
-rule OIDCAppInit:
+rule OIDCAppLaunchBrowser:
   let fp = fingerprint(<pk(skProver), pkVerifier>)
       hash = h(fp, salt)
       code_challenge = s256(code_verifier)
@@ -184,25 +194,16 @@ rule OIDCAppInit:
     , GenNonce(nonce)
     , GenBrowserSession($Prover, $IdP, ~sess)
     , GenerateCodeVerifierFor(code_verifier, $IdP) ]->
-  [ Out(tlsClientMsg(~sess, cert(~IdPKey), <'oidc_req', hash, nonce, code_challenge>))
+  [ Out(browserLaunch(~sess, cert(~IdPKey), <'oidc_req', hash, nonce, code_challenge>))
   // This Out fact models that the adversary can access authorization requests
   // (if taken together with the previous Out fact).
   , Out(<hash, nonce, code_challenge>)
   , SessionStore($Prover, nonce, <$IdP, hash, salt, code_verifier>)
   , Browser($Prover, $IdP, ~sess) ]
 
-rule OIDCAdversaryInit:
-  [ !Domain($IdP, ~IdPKey)
-  , In(<$IdP, $Prover, hash, nonce, code_challenge>)
-  , Fr(~sess) ]
-  --[ AdversaryOIDCRequest()
-    , GenBrowserSession($Prover, $IdP, ~sess) ]->
-  [ Out(tlsClientMsg(~sess,cert(~IdPKey), <'oidc_req', hash, nonce, code_challenge>))
-  , Browser($Prover, $IdP, ~sess) ]
-
 rule OIDCIdPInit:
   [ !Domain($IdP, ~IdPKey)
-  , In(tlsClientMsg(~sess, cert(~IdPKey), <'oidc_req', hash, nonce, code_challenge>)) ]
+  , In(browserLaunch(~sess, cert(~IdPKey), <'oidc_req', hash, nonce, code_challenge>)) ]
   --[ AuthenticationRequest(~sess, $IdP, hash, nonce, code_challenge)
     , IsNonce(nonce) ]->
   [ Out(tlsServerMsg(~sess, ~IdPKey, 'auth_req'))
@@ -269,24 +270,15 @@ rule OIDCIdPIssueCode:
   --[ IdPIssueCode($IdP, $Username, ~code)
     , IsNonce(nonce)
     , GenCode($IdP, ~code) ]->
-  [ Out(browserForward(~sess, cert(~signalApp), <'code', ~code, nonce>))
+  [ Out(browserLaunch(~sess, cert(~signalApp), <'code', ~code, nonce>))
   , St_OIDCIdP_Code($IdP, $Username, ~code, hash, nonce, code_challenge) ]
-
-// It is necessary handle forwards from the adversary dedicatedly, because
-// otherwise, the adversary can choose the session they forward to. This would
-// be unrealistic, though.
-rule LinkClick:
-  [ Fr(~sess), In(<code, nonce>), !Domain($Party, ~domain) ]
-  --[ GenBrowserSession($Prover, $Party, ~sess) ]->
-  [ Out(browserForward(~sess, cert(~domain), <'code', code, nonce>))
-  , Browser($Prover, $Party, ~sess) ]
 
 rule OIDCAppCodeRedirect:
   // Do not pattern match who the browser session was initiated for. The Signal
   // app cannot verify this. It is only critical that the adversary could not
   // choose the session.
   [ Browser($Prover, drop, ~sess)
-  , In(browserForward(~sess, cert(~signalApp), <'code', code, nonce>))
+  , In(browserLaunch(~sess, cert(~signalApp), <'code', code, nonce>))
   , !SignalAppDomain($IdP, ~signalApp)
   , !Domain($IdP, ~IdPKey)
   , SessionStore($Prover, nonce, <$IdP, hash, salt, code_verifier>)
@@ -468,7 +460,7 @@ lemma Executability:
     // Flow
     & OIDCRequest(prover, idp, pk(verifierSk), salt, hash, nonce, s256(code_verifier)) @ #l
     & (not Ex a b c d e f g #x. OIDCRequest(a, b, c, d, e, f, g) @ #x & not (#l = x))
-    & (not Ex #x. AdversaryOIDCRequest() @ #x)
+    & (not Ex #x. AdversaryLinkClick() @ #x)
     & AuthenticationRequest(session, idp, hash, nonce, s256(code_verifier)) @ #m
     & (not Ex a b c d e #x. AuthenticationRequest(a, b, c, d, e) @ #x & not (#m = #x))
     & AuthenticationResponse(session, prover, idp, username) @ #n
