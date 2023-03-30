@@ -241,9 +241,9 @@ lemma BrowserSessionUnique[reuse,use_induction]:
   ==> #x = #y"
 
 lemma UsernamesUnique[reuse]:
-  "All userA userB idp username pw #a #b.
-      ClaimUsername(userA, idp, username, pw) @ #a
-      & ClaimUsername(userB, idp, username, pw) @ #b
+  "All userA userB idp username pw1 pw2 #a #b.
+      ClaimUsername(userA, idp, username, pw1) @ #a
+      & ClaimUsername(userB, idp, username, pw2) @ #b
   ==> (#a = #b & userA = userB)
       | (Ex sk #t. CompromisedDomain(idp, sk) @ #t)"
 
