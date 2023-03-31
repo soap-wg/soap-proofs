@@ -36,6 +36,11 @@ def matchAgainstList(priorityList, lines):
     except StopIteration:
       pass
 
+fresh_reg = re.compile('!KU\( (~n\.?\d*) \)')
+def gatherFreshNStream(lines):
+  with_fresh = list(filter(bool, map(lambda ln: fresh_reg.match(ln[1]), lines)))
+  return map(lambda match: match[1], with_fresh)
+
 match = None
 if argv[1] == 'TokenFormatAndOTPLearning':
   match = matchAgainstList([
@@ -96,26 +101,31 @@ elif argv[1] == 'CodeIsSingleUse':
     'St_',
   ], lines)
 elif argv[1] == 'SocialAuthentication':
-  match = matchAgainstList([
+  fvars = gatherFreshNStream(lines)
+  rs = map(lambda fvar: re.compile(f'\(∀ #\w+\. \(!KU\( {re.escape(fvar)} \) @ #\w+\) ⇒ ⊥\)'), fvars)
+  match = matchAgainstList(list(rs) + [
     'St_',
     '!Domain',
-    re.compile(r'GenBrowserSession\(.+,.+, ~(IdPKey|sessPost|signalClient|code|domain)'),
-    re.compile(r'tlsClientMsg\(~(IdPKey|sessPost|signalClient|code|domain)\.?\d*,.+,\s*<\'oidc_req\''),
-    '!KU( ~IdPKey )',
+    re.compile(r'GenBrowserSession\(.+,.+, ~(IdPKey|sessPost|code|domain|signalApp)'),
+    re.compile(r'tlsClientMsg\(~(IdPKey|sessPost|code|domain|signalApp)\.?\d*'),
+    '!KU( ~IdPKey',
     '!KU( ~domain',
     '!KU( ~sessPost',
+    '!KU( ~signalApp',
+    '!KU( ~code',
     re.compile(r'\$\w+\.?\d* = \$\w+\.?\d*'),
     '\'code\'',
-    '!KU( ~signalClient',
-    '!KU( ~IdPKey',
     '\'oidc_req\'',
     '~code',
     '\'token\'',
     '\'login\'',
     '\'auth_req\'',
-    '!KU( s256(~n',
-    'GenBrowserSession',
     '!KU( ~sess',
+    '\'sign_up\'',
+    '\'idp_ack\'',
+    '\'fwd_token\'',
+    re.compile('∃ #\w+. \(Username(App|Server)\('),
+    'GenBrowserSession',
     '!KU( sign',
     '~sessPost',
     '!KU( ~n',
