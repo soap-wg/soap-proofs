@@ -453,55 +453,18 @@ lemma SocialAuthentication:
 
 lemma Executability:
   exists-trace
-  "Ex prover proverNum proverSk verifier verifierNum verifierSk idp
-    salt hash nonce code_verifier session username pw code token idpSk body
-    signature fp
-    #a #b #c #d #e #f #g #h #i #j #k #l #m #n #o #p #q #r #s #t.
-    // Prover signal account
-    ClaimNumber(prover, proverNum) @ #a
-    & SignalKeyApp(prover, proverSk) @ #b
-    & SignalKeyServer(proverNum, pk(proverSk)) @ #c
-    & ClaimSignalKey(prover, proverSk) @ #d
-    & (not Ex #x. CompromisedSignal(prover, proverSk) @ #x)
-    // Verifier signal account
-    & ClaimNumber(verifier, verifierNum) @ #e
-    & SignalKeyApp(verifier, verifierSk) @ #f
-    & SignalKeyServer(verifierNum, pk(verifierSk)) @ #g
-    & ClaimSignalKey(verifier, verifierSk) @ #h
-    & (not Ex #x. CompromisedSignal(verifier, verifierSk) @ #x)
-    // Prover IdP account
-    & UsernameApp(prover, idp, username, pw) @ #i
-    & UsernameServer(idp, username, pw) @ #j
-    & ClaimUsername(prover, idp, username, pw) @ #k
-    & (not Ex #x. CompromisedAccount(prover, idp, username) @ #x)
-    // Flow
-    & OIDCRequest(prover, idp, pk(verifierSk), salt, hash, nonce, s256(code_verifier)) @ #l
-    & (not Ex a b c d e f g #x. OIDCRequest(a, b, c, d, e, f, g) @ #x & not (#l = x))
-    & (not Ex #x. AdversaryLinkClick() @ #x)
-    & AuthenticationRequest(session, idp, hash, nonce, s256(code_verifier)) @ #m
-    & (not Ex a b c d e #x. AuthenticationRequest(a, b, c, d, e) @ #x & not (#m = #x))
-    & AuthenticationResponse(session, prover, idp, username) @ #n
-    & (not Ex a b c d #x. AuthenticationResponse(a, b, c, d) @ #x & not (#n = #x))
-    & IdPIssueCode(idp, username, code) @ #o
-    & (not Ex a b c #x. IdPIssueCode(a, b, c) @ #x & not (#o = #x))
-    & AppReceiveCode(prover, idp, code) @ #p
-    & (not Ex a b c #x. AppReceiveCode(a, b, c) @ #x & not (#p = #x))
-    & IdPIssueToken(token) @ #q
-    & (not Ex a #x. IdPIssueToken(a) @ #x & not (#q = #x))
-    & ClaimIdPKey(idp, idpSk) @ #r
-    & (not Ex sk #x. CompromisedDomain(idp, sk) @ #x)
-    & token = <body, signature>
-    & body = <idp, username, nonce, hash>
-    & hash = h(fp, salt)
-    & fp = fingerprint(<pk(proverSk), pk(verifierSk)>)
-    & signature = sign(body, idpSk)
-    & Forward(prover, token) @ #s
-    & (not Ex a b #x. Forward(a, b) @ #x & not (#s = #x))
-    & AssociateAs(pk(proverSk), idp, username, pk(verifierSk)) @ #t
-    & (not Ex a b c d #x. AssociateAs(a, b, c, d) @ #x & not (#t = #x))
-    & (not Ex signal sk #x #y. IsSignal(signal) @ #x
-      & CompromisedDomain(signal, sk) @ #y)
-    & (not Ex app sk #x #y. IsSignalAppFor(idp, app) @ #x
-      & CompromisedDomain(app, sk) @ #y)"
+  "Ex pkI idp username pkV prover skI accountHolder pw salt hash nonce
+    code_challenge sess #i #j #k #l #m #n.
+    AssociateAs(pkI, idp, username, pkV) @ #i
+    & ClaimSignalKey(prover, skI) @ #j & pkI = pk(skI)
+    & ClaimUsername(accountHolder, idp, username, pw) @ #k
+    & prover = accountHolder
+    & OIDCRequest(prover, idp, pkV, salt, hash, nonce, code_challenge) @ #l & #l < #i
+    & AuthenticationRequest(sess, idp, hash, nonce, code_challenge) @ #m & #m < #i
+    & AuthenticationResponse(sess, prover, idp, username) @ #n & #n < #i
+    & (not Ex d s #x. CompromisedDomain(d, s) @ #x)
+    & (not Ex u s #x. CompromisedSignal(u, s) @ #x)
+    & (not Ex u idp n #x. CompromisedAccount(u, idp, n) @ #x)
+    & (not Ex #x. AdversaryLinkClick() @ #x)"
 
 end
