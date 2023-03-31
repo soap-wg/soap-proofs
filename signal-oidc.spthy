@@ -253,7 +253,7 @@ lemma UsernamesServerConfirmed[reuse]:
       | (Ex sk #x. CompromisedDomain(idp, sk) @ #x)"
 
 lemma PasswordsConfidential[reuse]:
-  "All user idp username pw #t. ClaimUsername(user, idp, username, pw) @ #t
+  "All user idp username pw #t. UsernameApp(user, idp, username, pw) @ #t
   ==> not (Ex #x. !KU(pw) @ #x)
       | (Ex sk #x. CompromisedDomain(idp, sk) @ #x)
       | (Ex someone #x. CompromisedAccount(someone, idp, username) @ #x)"
@@ -273,10 +273,16 @@ rule OIDCIdPIssueCode:
   , !Domain($IdP, ~IdPKey), !SignalAppDomain($IdP, ~signalApp)
   , Fr(~code) ]
   --[ IdPIssueCode($IdP, $Username, ~code)
+    , IsPW(pw)
     , IsNonce(nonce)
     , GenCode($IdP, ~code) ]->
   [ Out(browserLaunch(~sess, cert(~signalApp), <'code', ~code, nonce>))
   , St_OIDCIdP_Code($IdP, $Username, ~code, hash, nonce, code_challenge) ]
+
+lemma IsPW[reuse]:
+  "All pw #x. IsPW(pw) @ #x
+  ==>   (Ex u i un #y. UsernameApp(u, i, un, pw) @ #y)
+      | (Ex #y. !KU(pw) @ #y)"
 
 rule OIDCAppCodeRedirect:
   // Do not pattern match who the browser session was initiated for. The Signal
