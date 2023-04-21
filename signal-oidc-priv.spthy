@@ -1,0 +1,38 @@
+theory SignalOIDCPrivacy
+begin
+
+functions: fingerprint/1, s256/1, h/2, pk/1
+equations: fingerprint(x) = x
+
+rule SignalKeyGen:
+  [] --> [ !SignalLtk($U, $SK) ]
+
+rule Account:
+  [] --> [ !Account($U, $PW) ]
+
+// OpenID Connect Auth code + PKCE flow
+rule OIDCAppInit:
+  let fp = fingerprint(<pk(skProver), pk(skVerifier)>)
+      hash = h(fp, salt)
+      code_challenge = s256(code_verifier)
+  in
+  [ !SignalLtk($Prover, skProver)
+  , !Account($Prover, $PW)
+  , !SignalLtk(numVerifier, pk(skVerifier))
+  , Fr(salt), Fr(nonce), Fr(code_verifier), Fr(~rand) ]
+  -->
+  [ Out(<'oidc_req', diff(hash, ~rand), nonce, code_challenge>)
+  , SessionStore($Prover, nonce, code_verifier) ]
+
+rule OIDCAppLogin:
+  [ In('auth_req'), !Account($User, $PW) ]
+  -->
+  [ Out(<'login', $User, $PW>) ]
+
+rule OIDCAppTokenRequest:
+  [ In(<'code', code, nonce>)
+  , SessionStore($Prover, nonce, code_verifier) ]
+  -->
+  [ Out(<'token_req', code, code_verifier>) ]
+
+end
