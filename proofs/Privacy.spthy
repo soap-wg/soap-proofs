@@ -1,0 +1,1977 @@
+theory SignalOIDCPrivacy begin
+
+// Function signature and definition of the equational theory E
+
+functions: fingerprint/1, fst/1, h/2, pair/2, pk/1, s256/1, snd/1
+equations:
+    fingerprint(x) = x,
+    fst(<x.1, x.2>) = x.1,
+    snd(<x.1, x.2>) = x.2
+
+
+
+rule (modulo E) SignalKeyGen:
+   [ ] --> [ !SignalLtk( $U, $SK ) ]
+
+rule (modulo E) Account:
+   [ ] --> [ !Account( $U, $PW ) ]
+
+rule (modulo E) OIDCAppInit:
+   [
+   !SignalLtk( $Prover, skProver ), !SignalLtk( $DiffProver, skDiffProver ),
+   !Account( $Prover, $PW ), !SignalLtk( $Verifier, pk(skVerifier) ),
+   !SignalLtk( $DiffVerifier, pk(skDiffVerifier) ), Fr( salt ), Fr( nonce ),
+   Fr( code_verifier )
+   ]
+  -->
+   [
+   Out( <'oidc_req', 
+         h(diff(fingerprint(<pk(skProver), pk(skVerifier)>), fingerprint(<
+                                                                          pk(skDiffProver), pk(skDiffVerifier)
+                                                                         >)),
+           salt), 
+         nonce, s256(code_verifier)>
+   ),
+   SessionStore( $Prover, nonce, code_verifier )
+   ]
+
+rule (modulo E) OIDCAppLogin:
+   [ In( 'auth_req' ), !Account( $User, $PW ) ]
+  -->
+   [ Out( <'login', $User, $PW> ) ]
+
+rule (modulo E) OIDCAppTokenRequest:
+   [
+   In( <'code', code, nonce> ),
+   SessionStore( $Prover, nonce, code_verifier )
+   ]
+  -->
+   [ Out( <'token_req', code, code_verifier> ) ]
+
+/* All well-formedness checks were successful. */
+
+diffLemma Observational_equivalence:
+rule-equivalence
+  case Rule_Account
+  backward-search
+    case LHS
+    step( simplify )
+    MIRRORED
+  next
+    case RHS
+    step( simplify )
+    MIRRORED
+  qed
+next
+  case Rule_Destrd_0_fst
+  backward-search
+    case LHS
+    step( simplify )
+    step( solve( !KD( <x, x.1> ) ▶₀ #i ) )
+      case OIDCAppInit
+      step( solve( (#vl, 0) ~~> (#i, 0) ) )
+        case d_0_fst
+        by step( contradiction /* impossible chain */ )
+      next
+        case d_0_snd
+        step( solve( (#vr.1, 0) ~~> (#i, 0) ) )
+          case d_0_fst
+          by step( solve( (#vr.2, 0) ~~> (#i, 0) ) )
+        next
+          case d_0_snd
+          step( solve( (#vr.2, 0) ~~> (#i, 0) ) )
+            case d_0_fst
+            by step( contradiction /* impossible chain */ )
+          next
+            case d_0_snd
+            by step( contradiction /* impossible chain */ )
+          next
+            case pair
+            step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+              case SignalKeyGen
+              step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+                case SignalKeyGen
+                step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+                  case Account
+                  by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+                qed
+              qed
+            qed
+          qed
+        next
+          case pair
+          step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+            case SignalKeyGen
+            step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+              case SignalKeyGen
+              step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+                case Account
+                by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+              qed
+            qed
+          qed
+        qed
+      next
+        case pair
+        step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+          case SignalKeyGen
+          step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+            case SignalKeyGen
+            step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+              case Account
+              by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+            qed
+          qed
+        qed
+      qed
+    next
+      case OIDCAppLogin
+      by step( contradiction /* impossible chain */ )
+    next
+      case OIDCAppTokenRequest
+      step( solve( (#vl, 0) ~~> (#i, 0) ) )
+        case d_0_fst
+        by step( contradiction /* impossible chain */ )
+      next
+        case d_0_snd
+        step( solve( (#vr.1, 0) ~~> (#i, 0) ) )
+          case d_0_fst
+          by step( contradiction /* forbidden chain */ )
+        next
+          case d_0_snd
+          by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #vr ) )
+        next
+          case pair
+          by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #vr ) )
+        qed
+      next
+        case pair
+        by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #vr ) )
+      qed
+    qed
+  next
+    case RHS
+    step( simplify )
+    step( solve( !KD( <x, x.1> ) ▶₀ #i ) )
+      case OIDCAppInit
+      step( solve( (#vl, 0) ~~> (#i, 0) ) )
+        case d_0_fst
+        by step( contradiction /* impossible chain */ )
+      next
+        case d_0_snd
+        step( solve( (#vr.1, 0) ~~> (#i, 0) ) )
+          case d_0_fst
+          by step( solve( (#vr.2, 0) ~~> (#i, 0) ) )
+        next
+          case d_0_snd
+          step( solve( (#vr.2, 0) ~~> (#i, 0) ) )
+            case d_0_fst
+            by step( contradiction /* impossible chain */ )
+          next
+            case d_0_snd
+            by step( contradiction /* impossible chain */ )
+          next
+            case pair
+            step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+              case SignalKeyGen
+              step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+                case SignalKeyGen
+                step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+                  case Account
+                  by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+                qed
+              qed
+            qed
+          qed
+        next
+          case pair
+          step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+            case SignalKeyGen
+            step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+              case SignalKeyGen
+              step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+                case Account
+                by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+              qed
+            qed
+          qed
+        qed
+      next
+        case pair
+        step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+          case SignalKeyGen
+          step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+            case SignalKeyGen
+            step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+              case Account
+              by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+            qed
+          qed
+        qed
+      qed
+    next
+      case OIDCAppLogin
+      by step( contradiction /* impossible chain */ )
+    next
+      case OIDCAppTokenRequest
+      step( solve( (#vl, 0) ~~> (#i, 0) ) )
+        case d_0_fst
+        by step( contradiction /* impossible chain */ )
+      next
+        case d_0_snd
+        step( solve( (#vr.1, 0) ~~> (#i, 0) ) )
+          case d_0_fst
+          by step( contradiction /* forbidden chain */ )
+        next
+          case d_0_snd
+          by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #vr ) )
+        next
+          case pair
+          by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #vr ) )
+        qed
+      next
+        case pair
+        by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #vr ) )
+      qed
+    qed
+  qed
+next
+  case Rule_Destrd_0_snd
+  backward-search
+    case LHS
+    step( simplify )
+    step( solve( !KD( <x, x.1> ) ▶₀ #i ) )
+      case OIDCAppInit
+      step( solve( (#vl, 0) ~~> (#i, 0) ) )
+        case d_0_fst
+        by step( contradiction /* impossible chain */ )
+      next
+        case d_0_snd
+        step( solve( (#vr.1, 0) ~~> (#i, 0) ) )
+          case d_0_fst
+          by step( solve( (#vr.2, 0) ~~> (#i, 0) ) )
+        next
+          case d_0_snd
+          step( solve( (#vr.2, 0) ~~> (#i, 0) ) )
+            case d_0_fst
+            by step( contradiction /* impossible chain */ )
+          next
+            case d_0_snd
+            by step( contradiction /* impossible chain */ )
+          next
+            case pair
+            step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+              case SignalKeyGen
+              step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+                case SignalKeyGen
+                step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+                  case Account
+                  by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+                qed
+              qed
+            qed
+          qed
+        next
+          case pair
+          step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+            case SignalKeyGen
+            step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+              case SignalKeyGen
+              step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+                case Account
+                by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+              qed
+            qed
+          qed
+        qed
+      next
+        case pair
+        step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+          case SignalKeyGen
+          step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+            case SignalKeyGen
+            step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+              case Account
+              by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+            qed
+          qed
+        qed
+      qed
+    next
+      case OIDCAppLogin
+      by step( contradiction /* impossible chain */ )
+    next
+      case OIDCAppTokenRequest
+      step( solve( (#vl, 0) ~~> (#i, 0) ) )
+        case d_0_fst
+        by step( contradiction /* impossible chain */ )
+      next
+        case d_0_snd
+        step( solve( (#vr.1, 0) ~~> (#i, 0) ) )
+          case d_0_fst
+          by step( contradiction /* forbidden chain */ )
+        next
+          case d_0_snd
+          by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #vr ) )
+        next
+          case pair
+          by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #vr ) )
+        qed
+      next
+        case pair
+        by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #vr ) )
+      qed
+    qed
+  next
+    case RHS
+    step( simplify )
+    step( solve( !KD( <x, x.1> ) ▶₀ #i ) )
+      case OIDCAppInit
+      step( solve( (#vl, 0) ~~> (#i, 0) ) )
+        case d_0_fst
+        by step( contradiction /* impossible chain */ )
+      next
+        case d_0_snd
+        step( solve( (#vr.1, 0) ~~> (#i, 0) ) )
+          case d_0_fst
+          by step( solve( (#vr.2, 0) ~~> (#i, 0) ) )
+        next
+          case d_0_snd
+          step( solve( (#vr.2, 0) ~~> (#i, 0) ) )
+            case d_0_fst
+            by step( contradiction /* impossible chain */ )
+          next
+            case d_0_snd
+            by step( contradiction /* impossible chain */ )
+          next
+            case pair
+            step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+              case SignalKeyGen
+              step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+                case SignalKeyGen
+                step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+                  case Account
+                  by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+                qed
+              qed
+            qed
+          qed
+        next
+          case pair
+          step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+            case SignalKeyGen
+            step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+              case SignalKeyGen
+              step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+                case Account
+                by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+              qed
+            qed
+          qed
+        qed
+      next
+        case pair
+        step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+          case SignalKeyGen
+          step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+            case SignalKeyGen
+            step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+              case Account
+              by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+            qed
+          qed
+        qed
+      qed
+    next
+      case OIDCAppLogin
+      by step( contradiction /* impossible chain */ )
+    next
+      case OIDCAppTokenRequest
+      step( solve( (#vl, 0) ~~> (#i, 0) ) )
+        case d_0_fst
+        by step( contradiction /* impossible chain */ )
+      next
+        case d_0_snd
+        step( solve( (#vr.1, 0) ~~> (#i, 0) ) )
+          case d_0_fst
+          by step( contradiction /* forbidden chain */ )
+        next
+          case d_0_snd
+          by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #vr ) )
+        next
+          case pair
+          by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #vr ) )
+        qed
+      next
+        case pair
+        by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #vr ) )
+      qed
+    qed
+  qed
+next
+  case Rule_Equality
+  backward-search
+    case LHS
+    step( simplify )
+    step( solve( !KD( x ) ▶₁ #i ) )
+      case OIDCAppInit
+      step( solve( (#vl, 0) ~~> (#i, 1) ) )
+        case d_0_fst
+        step( solve( (#vr.1, 0) ~~> (#i, 1) ) )
+          case Const_pub_oidc_req
+          step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+            case SignalKeyGen
+            step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+              case SignalKeyGen
+              step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+                case Account
+                by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+              qed
+            qed
+          qed
+        qed
+      next
+        case d_0_snd
+        step( solve( (#vr.1, 0) ~~> (#i, 1) ) )
+          case d_0_fst
+          step( solve( (#vr.2, 0) ~~> (#i, 1) ) )
+            case h
+            step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+              case SignalKeyGen
+              step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+                case SignalKeyGen
+                step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+                  case Account
+                  by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+                qed
+              qed
+            qed
+          qed
+        next
+          case d_0_snd
+          step( solve( (#vr.2, 0) ~~> (#i, 1) ) )
+            case d_0_fst
+            step( solve( (#vr.3, 0) ~~> (#i, 1) ) )
+              case Var_fresh_1_n
+              step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+                case SignalKeyGen
+                step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+                  case SignalKeyGen
+                  step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+                    case Account
+                    by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+                  qed
+                qed
+              qed
+            qed
+          next
+            case d_0_snd
+            step( solve( (#vr.3, 0) ~~> (#i, 1) ) )
+              case s256
+              step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+                case SignalKeyGen
+                step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+                  case SignalKeyGen
+                  step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+                    case Account
+                    by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+                  qed
+                qed
+              qed
+            qed
+          next
+            case pair
+            step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+              case SignalKeyGen
+              step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+                case SignalKeyGen
+                step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+                  case Account
+                  by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+                qed
+              qed
+            qed
+          qed
+        next
+          case pair
+          step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+            case SignalKeyGen
+            step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+              case SignalKeyGen
+              step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+                case Account
+                by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+              qed
+            qed
+          qed
+        qed
+      next
+        case pair
+        step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+          case SignalKeyGen
+          step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+            case SignalKeyGen
+            step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+              case Account
+              by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+            qed
+          qed
+        qed
+      qed
+    next
+      case OIDCAppLogin
+      step( solve( (#vl, 0) ~~> (#i, 1) ) )
+        case d_0_fst
+        step( solve( (#vr.1, 0) ~~> (#i, 1) ) )
+          case Const_pub_login
+          step( solve( !Account( $User, $PW ) ▶₁ #vr ) )
+            case Account
+            step( solve( !KU( 'auth_req' ) @ #vk.1 ) )
+              case coerce
+              step( solve( !KD( 'auth_req' ) ▶₀ #vk ) )
+                case OIDCAppInit
+                step( solve( (#vl.1, 0) ~~> (#vk, 0) ) )
+                  case d_0_fst
+                  by step( contradiction /* impossible chain */ )
+                next
+                  case d_0_snd
+                  step( solve( (#vr.4, 0) ~~> (#vk, 0) ) )
+                    case d_0_fst
+                    by step( solve( (#vr.5, 0) ~~> (#vk, 0) ) )
+                  next
+                    case d_0_snd
+                    by step( contradiction /* impossible chain */ )
+                  qed
+                qed
+              next
+                case OIDCAppLogin
+                by step( contradiction /* cyclic */ )
+              next
+                case OIDCAppTokenRequest
+                step( solve( (#vl.1, 0) ~~> (#vk, 0) ) )
+                  case d_0_fst
+                  by step( contradiction /* impossible chain */ )
+                next
+                  case d_0_snd
+                  step( solve( (#vr.4, 0) ~~> (#vk, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* forbidden chain */ )
+                  next
+                    case d_0_snd
+                    by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                    ) ▶₁ #vr.3 ) )
+                  qed
+                qed
+              qed
+            next
+              case pub
+              step( solve( !KU( 'login' ) @ #vk.1 ) )
+                case coerce
+                step( solve( !KD( 'login' ) ▶₀ #vk.1 ) )
+                  case OIDCAppInit
+                  step( solve( (#vl.1, 0) ~~> (#vk.1, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case d_0_snd
+                    step( solve( (#vr.4, 0) ~~> (#vk.1, 0) ) )
+                      case d_0_fst
+                      by step( solve( (#vr.5, 0) ~~> (#vk.1, 0) ) )
+                    next
+                      case d_0_snd
+                      by step( contradiction /* impossible chain */ )
+                    qed
+                  qed
+                next
+                  case OIDCAppLogin
+                  by step( contradiction /* impossible chain */ )
+                next
+                  case OIDCAppTokenRequest
+                  step( solve( (#vl.1, 0) ~~> (#vk.1, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case d_0_snd
+                    step( solve( (#vr.4, 0) ~~> (#vk.1, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* forbidden chain */ )
+                    next
+                      case d_0_snd
+                      by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                      ) ▶₁ #vr.3 ) )
+                    qed
+                  qed
+                qed
+              next
+                case pub
+                MIRRORED
+              qed
+            qed
+          qed
+        qed
+      next
+        case d_0_snd
+        step( solve( (#vr.1, 0) ~~> (#i, 1) ) )
+          case d_0_fst
+          step( solve( (#vr.2, 0) ~~> (#i, 1) ) )
+            case Var_pub_User
+            step( solve( !Account( $User, $PW ) ▶₁ #vr ) )
+              case Account
+              step( solve( !KU( 'auth_req' ) @ #vk.1 ) )
+                case coerce
+                step( solve( !KD( 'auth_req' ) ▶₀ #vk ) )
+                  case OIDCAppInit
+                  step( solve( (#vl.1, 0) ~~> (#vk, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case d_0_snd
+                    step( solve( (#vr.5, 0) ~~> (#vk, 0) ) )
+                      case d_0_fst
+                      by step( solve( (#vr.6, 0) ~~> (#vk, 0) ) )
+                    next
+                      case d_0_snd
+                      by step( contradiction /* impossible chain */ )
+                    qed
+                  qed
+                next
+                  case OIDCAppLogin
+                  by step( contradiction /* cyclic */ )
+                next
+                  case OIDCAppTokenRequest
+                  step( solve( (#vl.1, 0) ~~> (#vk, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case d_0_snd
+                    step( solve( (#vr.5, 0) ~~> (#vk, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* forbidden chain */ )
+                    next
+                      case d_0_snd
+                      by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                      ) ▶₁ #vr.4 ) )
+                    qed
+                  qed
+                qed
+              next
+                case pub
+                step( solve( !KU( $User ) @ #vk.1 ) )
+                  case coerce
+                  step( solve( !KD( $User ) ▶₀ #vk.1 ) )
+                    case OIDCAppInit
+                    step( solve( (#vl.1, 0) ~~> (#vk.1, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* impossible chain */ )
+                    next
+                      case d_0_snd
+                      step( solve( (#vr.5, 0) ~~> (#vk.1, 0) ) )
+                        case d_0_fst
+                        by step( solve( (#vr.6, 0) ~~> (#vk.1, 0) ) )
+                      next
+                        case d_0_snd
+                        by step( contradiction /* impossible chain */ )
+                      qed
+                    qed
+                  next
+                    case OIDCAppLogin
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case OIDCAppTokenRequest
+                    step( solve( (#vl.1, 0) ~~> (#vk.1, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* impossible chain */ )
+                    next
+                      case d_0_snd
+                      step( solve( (#vr.5, 0) ~~> (#vk.1, 0) ) )
+                        case d_0_fst
+                        by step( contradiction /* forbidden chain */ )
+                      next
+                        case d_0_snd
+                        by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                        ) ▶₁ #vr.4 ) )
+                      qed
+                    qed
+                  qed
+                next
+                  case pub
+                  MIRRORED
+                qed
+              qed
+            qed
+          qed
+        next
+          case d_0_snd
+          step( solve( (#vr.2, 0) ~~> (#i, 1) ) )
+            case Var_pub_PW
+            step( solve( !Account( $User, $PW ) ▶₁ #vr ) )
+              case Account
+              step( solve( !KU( 'auth_req' ) @ #vk.1 ) )
+                case coerce
+                step( solve( !KD( 'auth_req' ) ▶₀ #vk ) )
+                  case OIDCAppInit
+                  step( solve( (#vl.1, 0) ~~> (#vk, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case d_0_snd
+                    step( solve( (#vr.5, 0) ~~> (#vk, 0) ) )
+                      case d_0_fst
+                      by step( solve( (#vr.6, 0) ~~> (#vk, 0) ) )
+                    next
+                      case d_0_snd
+                      by step( contradiction /* impossible chain */ )
+                    qed
+                  qed
+                next
+                  case OIDCAppLogin
+                  by step( contradiction /* cyclic */ )
+                next
+                  case OIDCAppTokenRequest
+                  step( solve( (#vl.1, 0) ~~> (#vk, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case d_0_snd
+                    step( solve( (#vr.5, 0) ~~> (#vk, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* forbidden chain */ )
+                    next
+                      case d_0_snd
+                      by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                      ) ▶₁ #vr.4 ) )
+                    qed
+                  qed
+                qed
+              next
+                case pub
+                step( solve( !KU( $PW ) @ #vk.1 ) )
+                  case coerce
+                  step( solve( !KD( $PW ) ▶₀ #vk.1 ) )
+                    case OIDCAppInit
+                    step( solve( (#vl.1, 0) ~~> (#vk.1, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* impossible chain */ )
+                    next
+                      case d_0_snd
+                      step( solve( (#vr.5, 0) ~~> (#vk.1, 0) ) )
+                        case d_0_fst
+                        by step( solve( (#vr.6, 0) ~~> (#vk.1, 0) ) )
+                      next
+                        case d_0_snd
+                        by step( contradiction /* impossible chain */ )
+                      qed
+                    qed
+                  next
+                    case OIDCAppLogin
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case OIDCAppTokenRequest
+                    step( solve( (#vl.1, 0) ~~> (#vk.1, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* impossible chain */ )
+                    next
+                      case d_0_snd
+                      step( solve( (#vr.5, 0) ~~> (#vk.1, 0) ) )
+                        case d_0_fst
+                        by step( contradiction /* forbidden chain */ )
+                      next
+                        case d_0_snd
+                        by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                        ) ▶₁ #vr.4 ) )
+                      qed
+                    qed
+                  qed
+                next
+                  case pub
+                  MIRRORED
+                qed
+              qed
+            qed
+          qed
+        next
+          case pair
+          step( solve( !Account( $User, $PW ) ▶₁ #vr ) )
+            case Account
+            step( solve( !KU( 'auth_req' ) @ #vk.1 ) )
+              case coerce
+              step( solve( !KD( 'auth_req' ) ▶₀ #vk.1 ) )
+                case OIDCAppInit
+                step( solve( (#vl.1, 0) ~~> (#vk.1, 0) ) )
+                  case d_0_fst
+                  by step( contradiction /* impossible chain */ )
+                next
+                  case d_0_snd
+                  step( solve( (#vr.4, 0) ~~> (#vk.1, 0) ) )
+                    case d_0_fst
+                    by step( solve( (#vr.5, 0) ~~> (#vk.1, 0) ) )
+                  next
+                    case d_0_snd
+                    by step( contradiction /* impossible chain */ )
+                  qed
+                qed
+              next
+                case OIDCAppLogin
+                by step( contradiction /* cyclic */ )
+              next
+                case OIDCAppTokenRequest
+                step( solve( (#vl.1, 0) ~~> (#vk.1, 0) ) )
+                  case d_0_fst
+                  by step( contradiction /* impossible chain */ )
+                next
+                  case d_0_snd
+                  step( solve( (#vr.4, 0) ~~> (#vk.1, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* forbidden chain */ )
+                  next
+                    case d_0_snd
+                    by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                    ) ▶₁ #vr.3 ) )
+                  qed
+                qed
+              qed
+            next
+              case pub
+              step( solve( !KU( $User ) @ #vk.2 ) )
+                case coerce
+                step( solve( !KD( $User ) ▶₀ #vk.2 ) )
+                  case OIDCAppInit
+                  step( solve( (#vl.1, 0) ~~> (#vk.2, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case d_0_snd
+                    step( solve( (#vr.4, 0) ~~> (#vk.2, 0) ) )
+                      case d_0_fst
+                      by step( solve( (#vr.5, 0) ~~> (#vk.2, 0) ) )
+                    next
+                      case d_0_snd
+                      by step( contradiction /* impossible chain */ )
+                    qed
+                  qed
+                next
+                  case OIDCAppLogin
+                  by step( contradiction /* impossible chain */ )
+                next
+                  case OIDCAppTokenRequest
+                  step( solve( (#vl.1, 0) ~~> (#vk.2, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case d_0_snd
+                    step( solve( (#vr.4, 0) ~~> (#vk.2, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* forbidden chain */ )
+                    next
+                      case d_0_snd
+                      by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                      ) ▶₁ #vr.3 ) )
+                    qed
+                  qed
+                qed
+              next
+                case pub
+                step( solve( !KU( $PW ) @ #vk.3 ) )
+                  case coerce
+                  step( solve( !KD( $PW ) ▶₀ #vk.3 ) )
+                    case OIDCAppInit
+                    step( solve( (#vl.1, 0) ~~> (#vk.3, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* impossible chain */ )
+                    next
+                      case d_0_snd
+                      step( solve( (#vr.4, 0) ~~> (#vk.3, 0) ) )
+                        case d_0_fst
+                        by step( solve( (#vr.5, 0) ~~> (#vk.3, 0) ) )
+                      next
+                        case d_0_snd
+                        by step( contradiction /* impossible chain */ )
+                      qed
+                    qed
+                  next
+                    case OIDCAppLogin
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case OIDCAppTokenRequest
+                    step( solve( (#vl.1, 0) ~~> (#vk.3, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* impossible chain */ )
+                    next
+                      case d_0_snd
+                      step( solve( (#vr.4, 0) ~~> (#vk.3, 0) ) )
+                        case d_0_fst
+                        by step( contradiction /* forbidden chain */ )
+                      next
+                        case d_0_snd
+                        by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                        ) ▶₁ #vr.3 ) )
+                      qed
+                    qed
+                  qed
+                next
+                  case pub
+                  MIRRORED
+                qed
+              qed
+            qed
+          qed
+        qed
+      next
+        case pair
+        step( solve( !Account( $User, $PW ) ▶₁ #vr ) )
+          case Account
+          step( solve( !KU( 'auth_req' ) @ #vk.2 ) )
+            case coerce
+            step( solve( !KD( 'auth_req' ) ▶₀ #vk.2 ) )
+              case OIDCAppInit
+              step( solve( (#vl.1, 0) ~~> (#vk.2, 0) ) )
+                case d_0_fst
+                by step( contradiction /* impossible chain */ )
+              next
+                case d_0_snd
+                step( solve( (#vr.3, 0) ~~> (#vk.2, 0) ) )
+                  case d_0_fst
+                  by step( solve( (#vr.4, 0) ~~> (#vk.2, 0) ) )
+                next
+                  case d_0_snd
+                  by step( contradiction /* impossible chain */ )
+                qed
+              qed
+            next
+              case OIDCAppLogin
+              by step( contradiction /* cyclic */ )
+            next
+              case OIDCAppTokenRequest
+              step( solve( (#vl.1, 0) ~~> (#vk.2, 0) ) )
+                case d_0_fst
+                by step( contradiction /* impossible chain */ )
+              next
+                case d_0_snd
+                step( solve( (#vr.3, 0) ~~> (#vk.2, 0) ) )
+                  case d_0_fst
+                  by step( contradiction /* forbidden chain */ )
+                next
+                  case d_0_snd
+                  by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                  ) ▶₁ #vr.2 ) )
+                qed
+              qed
+            qed
+          next
+            case pub
+            step( solve( !KU( 'login' ) @ #vk.3 ) )
+              case coerce
+              step( solve( !KD( 'login' ) ▶₀ #vk.3 ) )
+                case OIDCAppInit
+                step( solve( (#vl.1, 0) ~~> (#vk.3, 0) ) )
+                  case d_0_fst
+                  by step( contradiction /* impossible chain */ )
+                next
+                  case d_0_snd
+                  step( solve( (#vr.3, 0) ~~> (#vk.3, 0) ) )
+                    case d_0_fst
+                    by step( solve( (#vr.4, 0) ~~> (#vk.3, 0) ) )
+                  next
+                    case d_0_snd
+                    by step( contradiction /* impossible chain */ )
+                  qed
+                qed
+              next
+                case OIDCAppLogin
+                by step( contradiction /* impossible chain */ )
+              next
+                case OIDCAppTokenRequest
+                step( solve( (#vl.1, 0) ~~> (#vk.3, 0) ) )
+                  case d_0_fst
+                  by step( contradiction /* impossible chain */ )
+                next
+                  case d_0_snd
+                  step( solve( (#vr.3, 0) ~~> (#vk.3, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* forbidden chain */ )
+                  next
+                    case d_0_snd
+                    by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                    ) ▶₁ #vr.2 ) )
+                  qed
+                qed
+              qed
+            next
+              case pub
+              step( solve( !KU( $User ) @ #vk.4 ) )
+                case coerce
+                step( solve( !KD( $User ) ▶₀ #vk.4 ) )
+                  case OIDCAppInit
+                  step( solve( (#vl.1, 0) ~~> (#vk.4, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case d_0_snd
+                    step( solve( (#vr.3, 0) ~~> (#vk.4, 0) ) )
+                      case d_0_fst
+                      by step( solve( (#vr.4, 0) ~~> (#vk.4, 0) ) )
+                    next
+                      case d_0_snd
+                      by step( contradiction /* impossible chain */ )
+                    qed
+                  qed
+                next
+                  case OIDCAppLogin
+                  by step( contradiction /* impossible chain */ )
+                next
+                  case OIDCAppTokenRequest
+                  step( solve( (#vl.1, 0) ~~> (#vk.4, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case d_0_snd
+                    step( solve( (#vr.3, 0) ~~> (#vk.4, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* forbidden chain */ )
+                    next
+                      case d_0_snd
+                      by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                      ) ▶₁ #vr.2 ) )
+                    qed
+                  qed
+                qed
+              next
+                case pub
+                step( solve( !KU( $PW ) @ #vk.5 ) )
+                  case coerce
+                  step( solve( !KD( $PW ) ▶₀ #vk.5 ) )
+                    case OIDCAppInit
+                    step( solve( (#vl.1, 0) ~~> (#vk.5, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* impossible chain */ )
+                    next
+                      case d_0_snd
+                      step( solve( (#vr.3, 0) ~~> (#vk.5, 0) ) )
+                        case d_0_fst
+                        by step( solve( (#vr.4, 0) ~~> (#vk.5, 0) ) )
+                      next
+                        case d_0_snd
+                        by step( contradiction /* impossible chain */ )
+                      qed
+                    qed
+                  next
+                    case OIDCAppLogin
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case OIDCAppTokenRequest
+                    step( solve( (#vl.1, 0) ~~> (#vk.5, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* impossible chain */ )
+                    next
+                      case d_0_snd
+                      step( solve( (#vr.3, 0) ~~> (#vk.5, 0) ) )
+                        case d_0_fst
+                        by step( contradiction /* forbidden chain */ )
+                      next
+                        case d_0_snd
+                        by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                        ) ▶₁ #vr.2 ) )
+                      qed
+                    qed
+                  qed
+                next
+                  case pub
+                  MIRRORED
+                qed
+              qed
+            qed
+          qed
+        qed
+      qed
+    next
+      case OIDCAppTokenRequest
+      step( solve( (#vl, 0) ~~> (#i, 1) ) )
+        case d_0_fst
+        step( solve( (#vr.1, 0) ~~> (#i, 1) ) )
+          case Const_pub_token_req
+          by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #vr ) )
+        qed
+      next
+        case d_0_snd
+        step( solve( (#vr.1, 0) ~~> (#i, 1) ) )
+          case d_0_fst
+          step( solve( (#vr.2, 0) ~~> (#i, 1) ) )
+            case Var_msg_code
+            by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #vr ) )
+          qed
+        next
+          case d_0_snd
+          by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #vr ) )
+        next
+          case pair
+          by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #vr ) )
+        qed
+      next
+        case pair
+        by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #vr ) )
+      qed
+    qed
+  next
+    case RHS
+    step( simplify )
+    step( solve( !KD( x ) ▶₁ #i ) )
+      case OIDCAppInit
+      step( solve( (#vl, 0) ~~> (#i, 1) ) )
+        case d_0_fst
+        step( solve( (#vr.1, 0) ~~> (#i, 1) ) )
+          case Const_pub_oidc_req
+          step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+            case SignalKeyGen
+            step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+              case SignalKeyGen
+              step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+                case Account
+                by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+              qed
+            qed
+          qed
+        qed
+      next
+        case d_0_snd
+        step( solve( (#vr.1, 0) ~~> (#i, 1) ) )
+          case d_0_fst
+          step( solve( (#vr.2, 0) ~~> (#i, 1) ) )
+            case h
+            step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+              case SignalKeyGen
+              step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+                case SignalKeyGen
+                step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+                  case Account
+                  by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+                qed
+              qed
+            qed
+          qed
+        next
+          case d_0_snd
+          step( solve( (#vr.2, 0) ~~> (#i, 1) ) )
+            case d_0_fst
+            step( solve( (#vr.3, 0) ~~> (#i, 1) ) )
+              case Var_fresh_1_n
+              step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+                case SignalKeyGen
+                step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+                  case SignalKeyGen
+                  step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+                    case Account
+                    by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+                  qed
+                qed
+              qed
+            qed
+          next
+            case d_0_snd
+            step( solve( (#vr.3, 0) ~~> (#i, 1) ) )
+              case s256
+              step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+                case SignalKeyGen
+                step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+                  case SignalKeyGen
+                  step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+                    case Account
+                    by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+                  qed
+                qed
+              qed
+            qed
+          next
+            case pair
+            step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+              case SignalKeyGen
+              step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+                case SignalKeyGen
+                step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+                  case Account
+                  by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+                qed
+              qed
+            qed
+          qed
+        next
+          case pair
+          step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+            case SignalKeyGen
+            step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+              case SignalKeyGen
+              step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+                case Account
+                by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+              qed
+            qed
+          qed
+        qed
+      next
+        case pair
+        step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #vr ) )
+          case SignalKeyGen
+          step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #vr ) )
+            case SignalKeyGen
+            step( solve( !Account( $Prover, $PW ) ▶₂ #vr ) )
+              case Account
+              by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #vr ) )
+            qed
+          qed
+        qed
+      qed
+    next
+      case OIDCAppLogin
+      step( solve( (#vl, 0) ~~> (#i, 1) ) )
+        case d_0_fst
+        step( solve( (#vr.1, 0) ~~> (#i, 1) ) )
+          case Const_pub_login
+          step( solve( !Account( $User, $PW ) ▶₁ #vr ) )
+            case Account
+            step( solve( !KU( 'auth_req' ) @ #vk.1 ) )
+              case coerce
+              step( solve( !KD( 'auth_req' ) ▶₀ #vk ) )
+                case OIDCAppInit
+                step( solve( (#vl.1, 0) ~~> (#vk, 0) ) )
+                  case d_0_fst
+                  by step( contradiction /* impossible chain */ )
+                next
+                  case d_0_snd
+                  step( solve( (#vr.4, 0) ~~> (#vk, 0) ) )
+                    case d_0_fst
+                    by step( solve( (#vr.5, 0) ~~> (#vk, 0) ) )
+                  next
+                    case d_0_snd
+                    by step( contradiction /* impossible chain */ )
+                  qed
+                qed
+              next
+                case OIDCAppLogin
+                by step( contradiction /* cyclic */ )
+              next
+                case OIDCAppTokenRequest
+                step( solve( (#vl.1, 0) ~~> (#vk, 0) ) )
+                  case d_0_fst
+                  by step( contradiction /* impossible chain */ )
+                next
+                  case d_0_snd
+                  step( solve( (#vr.4, 0) ~~> (#vk, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* forbidden chain */ )
+                  next
+                    case d_0_snd
+                    by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                    ) ▶₁ #vr.3 ) )
+                  qed
+                qed
+              qed
+            next
+              case pub
+              step( solve( !KU( 'login' ) @ #vk.1 ) )
+                case coerce
+                step( solve( !KD( 'login' ) ▶₀ #vk.1 ) )
+                  case OIDCAppInit
+                  step( solve( (#vl.1, 0) ~~> (#vk.1, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case d_0_snd
+                    step( solve( (#vr.4, 0) ~~> (#vk.1, 0) ) )
+                      case d_0_fst
+                      by step( solve( (#vr.5, 0) ~~> (#vk.1, 0) ) )
+                    next
+                      case d_0_snd
+                      by step( contradiction /* impossible chain */ )
+                    qed
+                  qed
+                next
+                  case OIDCAppLogin
+                  by step( contradiction /* impossible chain */ )
+                next
+                  case OIDCAppTokenRequest
+                  step( solve( (#vl.1, 0) ~~> (#vk.1, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case d_0_snd
+                    step( solve( (#vr.4, 0) ~~> (#vk.1, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* forbidden chain */ )
+                    next
+                      case d_0_snd
+                      by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                      ) ▶₁ #vr.3 ) )
+                    qed
+                  qed
+                qed
+              next
+                case pub
+                MIRRORED
+              qed
+            qed
+          qed
+        qed
+      next
+        case d_0_snd
+        step( solve( (#vr.1, 0) ~~> (#i, 1) ) )
+          case d_0_fst
+          step( solve( (#vr.2, 0) ~~> (#i, 1) ) )
+            case Var_pub_User
+            step( solve( !Account( $User, $PW ) ▶₁ #vr ) )
+              case Account
+              step( solve( !KU( 'auth_req' ) @ #vk.1 ) )
+                case coerce
+                step( solve( !KD( 'auth_req' ) ▶₀ #vk ) )
+                  case OIDCAppInit
+                  step( solve( (#vl.1, 0) ~~> (#vk, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case d_0_snd
+                    step( solve( (#vr.5, 0) ~~> (#vk, 0) ) )
+                      case d_0_fst
+                      by step( solve( (#vr.6, 0) ~~> (#vk, 0) ) )
+                    next
+                      case d_0_snd
+                      by step( contradiction /* impossible chain */ )
+                    qed
+                  qed
+                next
+                  case OIDCAppLogin
+                  by step( contradiction /* cyclic */ )
+                next
+                  case OIDCAppTokenRequest
+                  step( solve( (#vl.1, 0) ~~> (#vk, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case d_0_snd
+                    step( solve( (#vr.5, 0) ~~> (#vk, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* forbidden chain */ )
+                    next
+                      case d_0_snd
+                      by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                      ) ▶₁ #vr.4 ) )
+                    qed
+                  qed
+                qed
+              next
+                case pub
+                step( solve( !KU( $User ) @ #vk.1 ) )
+                  case coerce
+                  step( solve( !KD( $User ) ▶₀ #vk.1 ) )
+                    case OIDCAppInit
+                    step( solve( (#vl.1, 0) ~~> (#vk.1, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* impossible chain */ )
+                    next
+                      case d_0_snd
+                      step( solve( (#vr.5, 0) ~~> (#vk.1, 0) ) )
+                        case d_0_fst
+                        by step( solve( (#vr.6, 0) ~~> (#vk.1, 0) ) )
+                      next
+                        case d_0_snd
+                        by step( contradiction /* impossible chain */ )
+                      qed
+                    qed
+                  next
+                    case OIDCAppLogin
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case OIDCAppTokenRequest
+                    step( solve( (#vl.1, 0) ~~> (#vk.1, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* impossible chain */ )
+                    next
+                      case d_0_snd
+                      step( solve( (#vr.5, 0) ~~> (#vk.1, 0) ) )
+                        case d_0_fst
+                        by step( contradiction /* forbidden chain */ )
+                      next
+                        case d_0_snd
+                        by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                        ) ▶₁ #vr.4 ) )
+                      qed
+                    qed
+                  qed
+                next
+                  case pub
+                  MIRRORED
+                qed
+              qed
+            qed
+          qed
+        next
+          case d_0_snd
+          step( solve( (#vr.2, 0) ~~> (#i, 1) ) )
+            case Var_pub_PW
+            step( solve( !Account( $User, $PW ) ▶₁ #vr ) )
+              case Account
+              step( solve( !KU( 'auth_req' ) @ #vk.1 ) )
+                case coerce
+                step( solve( !KD( 'auth_req' ) ▶₀ #vk ) )
+                  case OIDCAppInit
+                  step( solve( (#vl.1, 0) ~~> (#vk, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case d_0_snd
+                    step( solve( (#vr.5, 0) ~~> (#vk, 0) ) )
+                      case d_0_fst
+                      by step( solve( (#vr.6, 0) ~~> (#vk, 0) ) )
+                    next
+                      case d_0_snd
+                      by step( contradiction /* impossible chain */ )
+                    qed
+                  qed
+                next
+                  case OIDCAppLogin
+                  by step( contradiction /* cyclic */ )
+                next
+                  case OIDCAppTokenRequest
+                  step( solve( (#vl.1, 0) ~~> (#vk, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case d_0_snd
+                    step( solve( (#vr.5, 0) ~~> (#vk, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* forbidden chain */ )
+                    next
+                      case d_0_snd
+                      by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                      ) ▶₁ #vr.4 ) )
+                    qed
+                  qed
+                qed
+              next
+                case pub
+                step( solve( !KU( $PW ) @ #vk.1 ) )
+                  case coerce
+                  step( solve( !KD( $PW ) ▶₀ #vk.1 ) )
+                    case OIDCAppInit
+                    step( solve( (#vl.1, 0) ~~> (#vk.1, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* impossible chain */ )
+                    next
+                      case d_0_snd
+                      step( solve( (#vr.5, 0) ~~> (#vk.1, 0) ) )
+                        case d_0_fst
+                        by step( solve( (#vr.6, 0) ~~> (#vk.1, 0) ) )
+                      next
+                        case d_0_snd
+                        by step( contradiction /* impossible chain */ )
+                      qed
+                    qed
+                  next
+                    case OIDCAppLogin
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case OIDCAppTokenRequest
+                    step( solve( (#vl.1, 0) ~~> (#vk.1, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* impossible chain */ )
+                    next
+                      case d_0_snd
+                      step( solve( (#vr.5, 0) ~~> (#vk.1, 0) ) )
+                        case d_0_fst
+                        by step( contradiction /* forbidden chain */ )
+                      next
+                        case d_0_snd
+                        by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                        ) ▶₁ #vr.4 ) )
+                      qed
+                    qed
+                  qed
+                next
+                  case pub
+                  MIRRORED
+                qed
+              qed
+            qed
+          qed
+        next
+          case pair
+          step( solve( !Account( $User, $PW ) ▶₁ #vr ) )
+            case Account
+            step( solve( !KU( 'auth_req' ) @ #vk.1 ) )
+              case coerce
+              step( solve( !KD( 'auth_req' ) ▶₀ #vk.1 ) )
+                case OIDCAppInit
+                step( solve( (#vl.1, 0) ~~> (#vk.1, 0) ) )
+                  case d_0_fst
+                  by step( contradiction /* impossible chain */ )
+                next
+                  case d_0_snd
+                  step( solve( (#vr.4, 0) ~~> (#vk.1, 0) ) )
+                    case d_0_fst
+                    by step( solve( (#vr.5, 0) ~~> (#vk.1, 0) ) )
+                  next
+                    case d_0_snd
+                    by step( contradiction /* impossible chain */ )
+                  qed
+                qed
+              next
+                case OIDCAppLogin
+                by step( contradiction /* cyclic */ )
+              next
+                case OIDCAppTokenRequest
+                step( solve( (#vl.1, 0) ~~> (#vk.1, 0) ) )
+                  case d_0_fst
+                  by step( contradiction /* impossible chain */ )
+                next
+                  case d_0_snd
+                  step( solve( (#vr.4, 0) ~~> (#vk.1, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* forbidden chain */ )
+                  next
+                    case d_0_snd
+                    by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                    ) ▶₁ #vr.3 ) )
+                  qed
+                qed
+              qed
+            next
+              case pub
+              step( solve( !KU( $User ) @ #vk.2 ) )
+                case coerce
+                step( solve( !KD( $User ) ▶₀ #vk.2 ) )
+                  case OIDCAppInit
+                  step( solve( (#vl.1, 0) ~~> (#vk.2, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case d_0_snd
+                    step( solve( (#vr.4, 0) ~~> (#vk.2, 0) ) )
+                      case d_0_fst
+                      by step( solve( (#vr.5, 0) ~~> (#vk.2, 0) ) )
+                    next
+                      case d_0_snd
+                      by step( contradiction /* impossible chain */ )
+                    qed
+                  qed
+                next
+                  case OIDCAppLogin
+                  by step( contradiction /* impossible chain */ )
+                next
+                  case OIDCAppTokenRequest
+                  step( solve( (#vl.1, 0) ~~> (#vk.2, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case d_0_snd
+                    step( solve( (#vr.4, 0) ~~> (#vk.2, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* forbidden chain */ )
+                    next
+                      case d_0_snd
+                      by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                      ) ▶₁ #vr.3 ) )
+                    qed
+                  qed
+                qed
+              next
+                case pub
+                step( solve( !KU( $PW ) @ #vk.3 ) )
+                  case coerce
+                  step( solve( !KD( $PW ) ▶₀ #vk.3 ) )
+                    case OIDCAppInit
+                    step( solve( (#vl.1, 0) ~~> (#vk.3, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* impossible chain */ )
+                    next
+                      case d_0_snd
+                      step( solve( (#vr.4, 0) ~~> (#vk.3, 0) ) )
+                        case d_0_fst
+                        by step( solve( (#vr.5, 0) ~~> (#vk.3, 0) ) )
+                      next
+                        case d_0_snd
+                        by step( contradiction /* impossible chain */ )
+                      qed
+                    qed
+                  next
+                    case OIDCAppLogin
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case OIDCAppTokenRequest
+                    step( solve( (#vl.1, 0) ~~> (#vk.3, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* impossible chain */ )
+                    next
+                      case d_0_snd
+                      step( solve( (#vr.4, 0) ~~> (#vk.3, 0) ) )
+                        case d_0_fst
+                        by step( contradiction /* forbidden chain */ )
+                      next
+                        case d_0_snd
+                        by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                        ) ▶₁ #vr.3 ) )
+                      qed
+                    qed
+                  qed
+                next
+                  case pub
+                  MIRRORED
+                qed
+              qed
+            qed
+          qed
+        qed
+      next
+        case pair
+        step( solve( !Account( $User, $PW ) ▶₁ #vr ) )
+          case Account
+          step( solve( !KU( 'auth_req' ) @ #vk.2 ) )
+            case coerce
+            step( solve( !KD( 'auth_req' ) ▶₀ #vk.2 ) )
+              case OIDCAppInit
+              step( solve( (#vl.1, 0) ~~> (#vk.2, 0) ) )
+                case d_0_fst
+                by step( contradiction /* impossible chain */ )
+              next
+                case d_0_snd
+                step( solve( (#vr.3, 0) ~~> (#vk.2, 0) ) )
+                  case d_0_fst
+                  by step( solve( (#vr.4, 0) ~~> (#vk.2, 0) ) )
+                next
+                  case d_0_snd
+                  by step( contradiction /* impossible chain */ )
+                qed
+              qed
+            next
+              case OIDCAppLogin
+              by step( contradiction /* cyclic */ )
+            next
+              case OIDCAppTokenRequest
+              step( solve( (#vl.1, 0) ~~> (#vk.2, 0) ) )
+                case d_0_fst
+                by step( contradiction /* impossible chain */ )
+              next
+                case d_0_snd
+                step( solve( (#vr.3, 0) ~~> (#vk.2, 0) ) )
+                  case d_0_fst
+                  by step( contradiction /* forbidden chain */ )
+                next
+                  case d_0_snd
+                  by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                  ) ▶₁ #vr.2 ) )
+                qed
+              qed
+            qed
+          next
+            case pub
+            step( solve( !KU( 'login' ) @ #vk.3 ) )
+              case coerce
+              step( solve( !KD( 'login' ) ▶₀ #vk.3 ) )
+                case OIDCAppInit
+                step( solve( (#vl.1, 0) ~~> (#vk.3, 0) ) )
+                  case d_0_fst
+                  by step( contradiction /* impossible chain */ )
+                next
+                  case d_0_snd
+                  step( solve( (#vr.3, 0) ~~> (#vk.3, 0) ) )
+                    case d_0_fst
+                    by step( solve( (#vr.4, 0) ~~> (#vk.3, 0) ) )
+                  next
+                    case d_0_snd
+                    by step( contradiction /* impossible chain */ )
+                  qed
+                qed
+              next
+                case OIDCAppLogin
+                by step( contradiction /* impossible chain */ )
+              next
+                case OIDCAppTokenRequest
+                step( solve( (#vl.1, 0) ~~> (#vk.3, 0) ) )
+                  case d_0_fst
+                  by step( contradiction /* impossible chain */ )
+                next
+                  case d_0_snd
+                  step( solve( (#vr.3, 0) ~~> (#vk.3, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* forbidden chain */ )
+                  next
+                    case d_0_snd
+                    by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                    ) ▶₁ #vr.2 ) )
+                  qed
+                qed
+              qed
+            next
+              case pub
+              step( solve( !KU( $User ) @ #vk.4 ) )
+                case coerce
+                step( solve( !KD( $User ) ▶₀ #vk.4 ) )
+                  case OIDCAppInit
+                  step( solve( (#vl.1, 0) ~~> (#vk.4, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case d_0_snd
+                    step( solve( (#vr.3, 0) ~~> (#vk.4, 0) ) )
+                      case d_0_fst
+                      by step( solve( (#vr.4, 0) ~~> (#vk.4, 0) ) )
+                    next
+                      case d_0_snd
+                      by step( contradiction /* impossible chain */ )
+                    qed
+                  qed
+                next
+                  case OIDCAppLogin
+                  by step( contradiction /* impossible chain */ )
+                next
+                  case OIDCAppTokenRequest
+                  step( solve( (#vl.1, 0) ~~> (#vk.4, 0) ) )
+                    case d_0_fst
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case d_0_snd
+                    step( solve( (#vr.3, 0) ~~> (#vk.4, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* forbidden chain */ )
+                    next
+                      case d_0_snd
+                      by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                      ) ▶₁ #vr.2 ) )
+                    qed
+                  qed
+                qed
+              next
+                case pub
+                step( solve( !KU( $PW ) @ #vk.5 ) )
+                  case coerce
+                  step( solve( !KD( $PW ) ▶₀ #vk.5 ) )
+                    case OIDCAppInit
+                    step( solve( (#vl.1, 0) ~~> (#vk.5, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* impossible chain */ )
+                    next
+                      case d_0_snd
+                      step( solve( (#vr.3, 0) ~~> (#vk.5, 0) ) )
+                        case d_0_fst
+                        by step( solve( (#vr.4, 0) ~~> (#vk.5, 0) ) )
+                      next
+                        case d_0_snd
+                        by step( contradiction /* impossible chain */ )
+                      qed
+                    qed
+                  next
+                    case OIDCAppLogin
+                    by step( contradiction /* impossible chain */ )
+                  next
+                    case OIDCAppTokenRequest
+                    step( solve( (#vl.1, 0) ~~> (#vk.5, 0) ) )
+                      case d_0_fst
+                      by step( contradiction /* impossible chain */ )
+                    next
+                      case d_0_snd
+                      step( solve( (#vr.3, 0) ~~> (#vk.5, 0) ) )
+                        case d_0_fst
+                        by step( contradiction /* forbidden chain */ )
+                      next
+                        case d_0_snd
+                        by step( solve( SessionStore( $Prover, nonce, code_verifier
+                                        ) ▶₁ #vr.2 ) )
+                      qed
+                    qed
+                  qed
+                next
+                  case pub
+                  MIRRORED
+                qed
+              qed
+            qed
+          qed
+        qed
+      qed
+    next
+      case OIDCAppTokenRequest
+      step( solve( (#vl, 0) ~~> (#i, 1) ) )
+        case d_0_fst
+        step( solve( (#vr.1, 0) ~~> (#i, 1) ) )
+          case Const_pub_token_req
+          by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #vr ) )
+        qed
+      next
+        case d_0_snd
+        step( solve( (#vr.1, 0) ~~> (#i, 1) ) )
+          case d_0_fst
+          step( solve( (#vr.2, 0) ~~> (#i, 1) ) )
+            case Var_msg_code
+            by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #vr ) )
+          qed
+        next
+          case d_0_snd
+          by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #vr ) )
+        next
+          case pair
+          by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #vr ) )
+        qed
+      next
+        case pair
+        by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #vr ) )
+      qed
+    qed
+  qed
+next
+  case Rule_OIDCAppInit
+  backward-search
+    case LHS
+    step( simplify )
+    step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #i ) )
+      case SignalKeyGen
+      step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #i ) )
+        case SignalKeyGen
+        step( solve( !Account( $Prover, $PW ) ▶₂ #i ) )
+          case Account
+          by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #i ) )
+        qed
+      qed
+    qed
+  next
+    case RHS
+    step( simplify )
+    step( solve( !SignalLtk( $Prover, skProver ) ▶₀ #i ) )
+      case SignalKeyGen
+      step( solve( !SignalLtk( $DiffProver, skDiffProver ) ▶₁ #i ) )
+        case SignalKeyGen
+        step( solve( !Account( $Prover, $PW ) ▶₂ #i ) )
+          case Account
+          by step( solve( !SignalLtk( $Verifier, pk(skVerifier) ) ▶₃ #i ) )
+        qed
+      qed
+    qed
+  qed
+next
+  case Rule_OIDCAppLogin
+  backward-search
+    case LHS
+    step( simplify )
+    step( solve( !Account( $User, $PW ) ▶₁ #i ) )
+      case Account
+      step( solve( !KU( 'auth_req' ) @ #vk ) )
+        case coerce
+        step( solve( !KD( 'auth_req' ) ▶₀ #vk ) )
+          case OIDCAppInit
+          step( solve( (#vl, 0) ~~> (#vk, 0) ) )
+            case d_0_fst
+            by step( contradiction /* impossible chain */ )
+          next
+            case d_0_snd
+            step( solve( (#vr.2, 0) ~~> (#vk, 0) ) )
+              case d_0_fst
+              by step( solve( (#vr.3, 0) ~~> (#vk, 0) ) )
+            next
+              case d_0_snd
+              by step( contradiction /* impossible chain */ )
+            qed
+          qed
+        next
+          case OIDCAppLogin
+          by step( contradiction /* cyclic */ )
+        next
+          case OIDCAppTokenRequest
+          step( solve( (#vl, 0) ~~> (#vk, 0) ) )
+            case d_0_fst
+            by step( contradiction /* impossible chain */ )
+          next
+            case d_0_snd
+            step( solve( (#vr.2, 0) ~~> (#vk, 0) ) )
+              case d_0_fst
+              by step( contradiction /* forbidden chain */ )
+            next
+              case d_0_snd
+              by step( solve( SessionStore( $Prover, nonce, code_verifier
+                              ) ▶₁ #vr.1 ) )
+            qed
+          qed
+        qed
+      next
+        case pub
+        MIRRORED
+      qed
+    qed
+  next
+    case RHS
+    step( simplify )
+    step( solve( !Account( $User, $PW ) ▶₁ #i ) )
+      case Account
+      step( solve( !KU( 'auth_req' ) @ #vk ) )
+        case coerce
+        step( solve( !KD( 'auth_req' ) ▶₀ #vk ) )
+          case OIDCAppInit
+          step( solve( (#vl, 0) ~~> (#vk, 0) ) )
+            case d_0_fst
+            by step( contradiction /* impossible chain */ )
+          next
+            case d_0_snd
+            step( solve( (#vr.2, 0) ~~> (#vk, 0) ) )
+              case d_0_fst
+              by step( solve( (#vr.3, 0) ~~> (#vk, 0) ) )
+            next
+              case d_0_snd
+              by step( contradiction /* impossible chain */ )
+            qed
+          qed
+        next
+          case OIDCAppLogin
+          by step( contradiction /* cyclic */ )
+        next
+          case OIDCAppTokenRequest
+          step( solve( (#vl, 0) ~~> (#vk, 0) ) )
+            case d_0_fst
+            by step( contradiction /* impossible chain */ )
+          next
+            case d_0_snd
+            step( solve( (#vr.2, 0) ~~> (#vk, 0) ) )
+              case d_0_fst
+              by step( contradiction /* forbidden chain */ )
+            next
+              case d_0_snd
+              by step( solve( SessionStore( $Prover, nonce, code_verifier
+                              ) ▶₁ #vr.1 ) )
+            qed
+          qed
+        qed
+      next
+        case pub
+        MIRRORED
+      qed
+    qed
+  qed
+next
+  case Rule_OIDCAppTokenRequest
+  backward-search
+    case LHS
+    step( simplify )
+    by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #i ) )
+  next
+    case RHS
+    step( simplify )
+    by step( solve( SessionStore( $Prover, nonce, code_verifier ) ▶₁ #i ) )
+  qed
+next
+  case Rule_Send
+  backward-search
+    case LHS
+    step( simplify )
+    MIRRORED
+  next
+    case RHS
+    step( simplify )
+    MIRRORED
+  qed
+next
+  case Rule_SignalKeyGen
+  backward-search
+    case LHS
+    step( simplify )
+    MIRRORED
+  next
+    case RHS
+    step( simplify )
+    MIRRORED
+  qed
+qed
+
+end
