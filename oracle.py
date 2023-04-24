@@ -149,7 +149,7 @@ elif argv[1] == 'Executability':
     return matchAgainstList(deferList, lines)
 
   match = defer([
-    '!KU',
+    re.compile('!KU\( [^~]'),
     re.compile('^!'),
     'GenBrowserSession(',
     'Browser(',
