@@ -2,13 +2,14 @@ theory SignalOIDC begin
 
 // Function signature and definition of the equational theory E
 
-functions: browserForward/3, cert/1, forwardReceive/2, fst/1, h/2,
-           pair/2, pk/1, s256/1, sign/2, signalMsg/3, signalRead/2, snd/1,
-           tlsClientMsg/3, tlsClientReceive/2, tlsServerMsg/3, tlsServerReceive/2,
-           trim/1, true/0, verify/3
+functions: browserLaunch/3, cert/1, extract/1, fingerprint/1,
+           forwardReceive/2, fst/1, h/2, pair/2, pk/1, s256/1, sign/2, signalMsg/3,
+           signalRead/2, snd/1, tlsClientMsg/3, tlsClientReceive/2, tlsServerMsg/3,
+           tlsServerReceive/2, true/0, verify/3
 equations:
-    forwardReceive(browserForward(~sess, cert(~domain), m), ~domain) = ~sess,
-    forwardReceive(browserForward(~sess, cert(~domain), m), ~domain) = m,
+    extract(fingerprint(x)) = x,
+    forwardReceive(browserLaunch(~sess, cert(~domain), m), ~domain) = ~sess,
+    forwardReceive(browserLaunch(~sess, cert(~domain), m), ~domain) = m,
     fst(<x.1, x.2>) = x.1,
     signalRead(signalMsg(~senderSk, pk(~receiverSk), m), ~receiverSk) = m,
     snd(<x.1, x.2>) = x.2,
@@ -56,37 +57,37 @@ restriction OnlyOnceSignal:
     ((OnlyOnceSignal( ) @ #i) ∧ (OnlyOnceSignal( ) @ #j)) ⇒ (#i = #j)"
   // safety formula
 
-rule (modulo E) SignalClient:
-   [ !Domain( $IdP, ~secret ), !Domain( $SignalClient, ~domain ) ]
+rule (modulo E) SignalApp:
+   [ !Domain( $IdP, ~secret ), !Domain( $SignalApp, ~domain ) ]
   --[
-  OnlyOnceSignalClientIdP( $IdP ), OnlyOnceSignalClient( $SignalClient ),
-  IsSignalClientFor( $IdP, $SignalClient )
+  OnlyOnceSignalAppIdP( $IdP ), OnlyOnceSignalApp( $SignalApp ),
+  IsSignalAppFor( $IdP, $SignalApp )
   ]->
-   [ !SignalClientDomain( $IdP, ~domain ) ]
+   [ !SignalAppDomain( $IdP, ~domain ) ]
 
   /* has exactly the trivial AC variant */
 
-restriction OnlyOnceSignalClientIdP:
+restriction OnlyOnceSignalAppIdP:
   "∀ idp #i #j.
-    ((OnlyOnceSignalClientIdP( idp ) @ #i) ∧
-     (OnlyOnceSignalClientIdP( idp ) @ #j)) ⇒
+    ((OnlyOnceSignalAppIdP( idp ) @ #i) ∧
+     (OnlyOnceSignalAppIdP( idp ) @ #j)) ⇒
     (#i = #j)"
   // safety formula
 
-restriction OnlyOnceSignalClient:
+restriction OnlyOnceSignalApp:
   "∀ c #i #j.
-    ((OnlyOnceSignalClient( c ) @ #i) ∧ (OnlyOnceSignalClient( c ) @ #j)) ⇒
+    ((OnlyOnceSignalApp( c ) @ #i) ∧ (OnlyOnceSignalApp( c ) @ #j)) ⇒
     (#i = #j)"
   // safety formula
 
 rule (modulo E) SignalRegister:
    [ Fr( sk ), Fr( ~sess ), !Phone( $A, $Number ), !SignalDomain( ~signal )
    ]
-  --[ SignalKeyClient( $A, sk ) ]->
+  --[ IsSignalKey( sk ) ]->
    [
    Out( tlsClientMsg(~sess, cert(~signal), <'signal_req', $Number, pk(sk)>)
    ),
-   Out( pk(sk) ), St_SignalReg_Client( $A, ~sess, sk )
+   Out( pk(sk) ), St_SignalReg_App( $A, ~sess, sk )
    ]
 
   /* has exactly the trivial AC variant */
@@ -108,12 +109,12 @@ rule (modulo E) SignalChallenge:
 rule (modulo E) SignalRespond:
    [
    In( <'otp', challenge> ), !SignalDomain( ~signal ),
-   St_SignalReg_Client( $A, ~sess, sk )
+   St_SignalReg_App( $A, ~sess, sk )
    ]
   --[ OTPRespond( challenge ) ]->
    [
    Out( tlsClientMsg(~sess, cert(~signal), <'otp_respond', challenge>) ),
-   St_SignalReg_ClientWait( $A, ~sess, sk )
+   St_SignalReg_AppWait( $A, ~sess, sk )
    ]
 
   /* has exactly the trivial AC variant */
@@ -141,16 +142,24 @@ restriction KeysUnique:
 
 rule (modulo E) SignalFin:
    [
-   !SignalDomain( ~signal ), St_SignalReg_ClientWait( $A, ~sess, sk ),
+   !SignalDomain( ~signal ), St_SignalReg_AppWait( $A, ~sess, sk ),
    In( tlsServerMsg(~sess, ~signal, 'signal_ack') )
    ]
   --[ ClaimSignalKey( $A, sk ) ]->
-   [ !SignalLtkClient( $A, sk ) ]
+   [ !SignalLtkApp( $A, sk ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) SignalKeyRequest:
+   [ Fr( ~sess ), !SignalLtkServer( phone, ltk ), !SignalDomain( ~signal ) ]
+  --[ ShareSignalKey( ltk ) ]->
+   [ Out( tlsServerMsg(~sess, ~signal, <'signal_pk_response', phone, ltk>) )
+   ]
 
   /* has exactly the trivial AC variant */
 
 rule (modulo E) SignalCompromise:
-   [ !SignalLtkClient( $A, ~sk ) ]
+   [ !SignalLtkApp( $A, ~sk ) ]
   --[ CompromisedSignal( $A, ~sk ) ]->
    [ Out( ~sk ) ]
 
@@ -164,21 +173,18 @@ rule (modulo E) IdPSetup:
   /* has exactly the trivial AC variant */
 
 rule (modulo E) IdPPkDistribute:
-   [
-   !IdPLtk( $IdP, sk ), !Domain( $IdP, ~IdPKey ),
-   In( tlsClientMsg(~sess, cert(~IdPKey), 'pk_req') )
-   ]
+   [ Fr( ~sess ), !IdPLtk( $IdP, sk ), !Domain( $IdP, ~IdPKey ) ]
   -->
-   [ Out( tlsServerMsg(~sess, ~IdPKey, <'pk_response', pk(sk)>) ) ]
+   [ Out( tlsServerMsg(~sess, ~IdPKey, <'idp_pk_response', pk(sk)>) ) ]
 
   /* has exactly the trivial AC variant */
 
 rule (modulo E) IdPSignUpInit:
    [ Fr( pw ), Fr( ~sess ), !Domain( $IdP, ~IdPKey ) ]
-  --[ UsernameClient( $A, $IdP, $Username, pw ) ]->
+  --[ UsernameApp( $A, $IdP, $Username, pw ) ]->
    [
    Out( tlsClientMsg(~sess, cert(~IdPKey), <'sign_up', $Username, pw>) ),
-   St_IdPRegistration_Client( ~sess, $A, $IdP, $Username, pw )
+   St_IdPRegistration_App( ~sess, $A, $IdP, $Username, pw )
    ]
 
   /* has exactly the trivial AC variant */
@@ -206,16 +212,16 @@ restriction AccountsUnique:
 
 rule (modulo E) IdPSignUpFin:
    [
-   St_IdPRegistration_Client( ~sess, $A, $IdP, $Username, pw ),
+   St_IdPRegistration_App( ~sess, $A, $IdP, $Username, pw ),
    !Domain( $IdP, ~IdPKey ), In( tlsServerMsg(~sess, ~IdPKey, 'idp_ack') )
    ]
   --[ ClaimUsername( $A, $IdP, $Username, pw ) ]->
-   [ !IdPAccountClient( $A, $IdP, $Username, pw ) ]
+   [ !IdPAccountApp( $A, $IdP, $Username, pw ) ]
 
   /* has exactly the trivial AC variant */
 
 rule (modulo E) IdPAccountCompromise:
-   [ !IdPAccountClient( $A, $IdP, $Username, ~pw ) ]
+   [ !IdPAccountApp( $A, $IdP, $Username, ~pw ) ]
   --[ CompromisedAccount( $A, $IdP, $Username ) ]->
    [ Out( ~pw ) ]
 
@@ -243,61 +249,59 @@ restriction OnlyOnceInitSessionStore:
     (#x = #y)"
   // safety formula
 
-rule (modulo E) OIDCClientInit:
+rule (modulo E) LinkClick:
+   [ Fr( ~sess ), In( m ), !Domain( $Party, ~domain ) ]
+  --[ GenBrowserSession( $Prover, $Party, ~sess ), AdversaryLinkClick( )
+  ]->
    [
-   !Domain( $IdP, ~IdPKey ), !SignalLtkClient( $Initiator, skInitiator ),
-   !IdPAccountClient( $Initiator, $IdP, username, pw ),
-   !SignalLtkServer( numVerifier, pkVerifier ),
-   SessionStore( $Initiator, drop1, drop2 ), Fr( salt ), Fr( nonce ),
+   Out( browserLaunch(~sess, cert(~domain), m) ),
+   Browser( $Prover, $Party, ~sess )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) OIDCAppLaunchBrowser:
+   [
+   !Domain( $IdP, ~IdPKey ), !SignalDomain( ~signal ),
+   !SignalLtkApp( $Prover, skProver ),
+   !IdPAccountApp( $Prover, $IdP, username, pw ),
+   In( tlsServerMsg(~sessPk, ~signal,
+                    <'signal_pk_response', phone, pkVerifier>)
+   ),
+   SessionStore( $Prover, drop1, drop2 ), Fr( salt ), Fr( nonce ),
    Fr( code_verifier ), Fr( ~sess )
    ]
   --[
-  OIDCRequest( $Initiator, $IdP, pkVerifier, salt,
-               h(<trim(pk(skInitiator)), trim(pkVerifier)>, salt), nonce,
+  OIDCRequest( $Prover, $IdP, pkVerifier, salt,
+               h(fingerprint(<pk(skProver), pkVerifier>), salt), nonce,
                s256(code_verifier)
   ),
-  GenNonce( nonce ), GenBrowserSession( $Initiator, $IdP, ~sess ),
+  GenNonce( nonce ), GenBrowserSession( $Prover, $IdP, ~sess ),
   GenerateCodeVerifierFor( code_verifier, $IdP )
   ]->
    [
-   Out( tlsClientMsg(~sess, cert(~IdPKey),
-                     <'oidc_req', h(<trim(pk(skInitiator)), trim(pkVerifier)>, salt), nonce, 
-                      s256(code_verifier)>)
+   Out( browserLaunch(~sess, cert(~IdPKey),
+                      <'oidc_req', h(fingerprint(<pk(skProver), pkVerifier>), salt), nonce, 
+                       s256(code_verifier)>)
    ),
-   Out( <h(<trim(pk(skInitiator)), trim(pkVerifier)>, salt), nonce, 
+   Out( <h(fingerprint(<pk(skProver), pkVerifier>), salt), nonce, 
          s256(code_verifier)>
    ),
-   SessionStore( $Initiator, nonce,
-                 <$IdP, h(<trim(pk(skInitiator)), trim(pkVerifier)>, salt), salt, 
+   SessionStore( $Prover, nonce,
+                 <$IdP, h(fingerprint(<pk(skProver), pkVerifier>), salt), salt, 
                   code_verifier>
    ),
-   Browser( $Initiator, $IdP, ~sess )
+   Browser( $Prover, $IdP, ~sess )
    ]
 
-  // loop breaker: [4]
-  /* has exactly the trivial AC variant */
-
-rule (modulo E) OIDCAdversaryInit:
-   [
-   !Domain( $IdP, ~IdPKey ),
-   In( <$IdP, $Initiator, hash, nonce, code_challenge> ), Fr( ~sess )
-   ]
-  --[ AdversaryOIDCRequest( ), GenBrowserSession( $Initiator, $IdP, ~sess )
-  ]->
-   [
-   Out( tlsClientMsg(~sess, cert(~IdPKey),
-                     <'oidc_req', hash, nonce, code_challenge>)
-   ),
-   Browser( $Initiator, $IdP, ~sess )
-   ]
-
+  // loop breaker: [5]
   /* has exactly the trivial AC variant */
 
 rule (modulo E) OIDCIdPInit:
    [
    !Domain( $IdP, ~IdPKey ),
-   In( tlsClientMsg(~sess, cert(~IdPKey),
-                    <'oidc_req', hash, nonce, code_challenge>)
+   In( browserLaunch(~sess, cert(~IdPKey),
+                     <'oidc_req', hash, nonce, code_challenge>)
    )
    ]
   --[
@@ -311,19 +315,19 @@ rule (modulo E) OIDCIdPInit:
 
   /* has exactly the trivial AC variant */
 
-rule (modulo E) OIDCClientLogin:
+rule (modulo E) OIDCAppLogin:
    [
-   Browser( $Initiator, $IdP, ~sess ), !Domain( $IdP, ~IdPKey ),
+   Browser( $Prover, $IdP, ~sess ), !Domain( $IdP, ~IdPKey ),
    In( tlsServerMsg(~sess, ~IdPKey, 'auth_req') ),
-   !IdPAccountClient( $Initiator, $IdP, $Username, pw )
+   !IdPAccountApp( $Prover, $IdP, $Username, pw )
    ]
   --[
-  AuthenticationResponse( ~sess, $Initiator, $IdP, $Username ),
-  UseBrowserSession( $Initiator, $IdP, ~sess )
+  AuthenticationResponse( ~sess, $Prover, $IdP, $Username ),
+  UseBrowserSession( $Prover, $IdP, ~sess )
   ]->
    [
    Out( tlsClientMsg(~sess, cert(~IdPKey), <'login', $Username, pw>) ),
-   Browser( $Initiator, $IdP, ~sess )
+   Browser( $Prover, $IdP, ~sess )
    ]
 
   // loop breaker: [0]
@@ -355,17 +359,14 @@ next
           ∧
            (¬(last(#y))) ∧ (#y < #x)) )
     case case_1
-    solve( Browser( $Initiator, $IdP, ~sess ) ▶₀ #x )
+    solve( Browser( $Prover, $IdP, ~sess ) ▶₀ #x )
       case LinkClick
       by contradiction /* from formulas */
     next
-      case OIDCAdversaryInit
+      case OIDCAppLaunchBrowser
       by contradiction /* from formulas */
     next
-      case OIDCClientInit
-      by contradiction /* from formulas */
-    next
-      case OIDCClientLogin
+      case OIDCAppLogin
       by contradiction /* from formulas */
     qed
   next
@@ -396,12 +397,12 @@ next
   simplify
   solve( GenBrowserSession( user2, domain2, ~sess ) @ #y.2 )
     case LinkClick
-    solve( (¬($Initiator = $Initiator.1))  ∥ (¬($IdP = $Party)) )
+    solve( (¬($Prover = $Prover.1))  ∥ (¬($IdP = $Party)) )
       case case_1
       solve( (last(#y))  ∥ (last(#x))  ∥
-             (($Initiator = $Initiator.1) ∧ ($IdP = $Party)) )
+             (($Prover = $Prover.1) ∧ ($IdP = $Party)) )
         case case_1
-        solve( GenBrowserSession( $Initiator, $IdP, ~sess ) @ #y.1 )
+        solve( GenBrowserSession( $Prover, $IdP, ~sess ) @ #y.1 )
           case LinkClick
           by contradiction /* from formulas */
         qed
@@ -409,11 +410,11 @@ next
         case case_2
         solve( GenBrowserSession( user, domain.1, ~sess ) @ #y.1 )
           case LinkClick
-          solve( Browser( $Initiator, $IdP, ~sess ) ▶₀ #x )
+          solve( Browser( $Prover, $IdP, ~sess ) ▶₀ #x )
             case LinkClick
             by contradiction /* from formulas */
           next
-            case OIDCClientLogin
+            case OIDCAppLogin
             by contradiction /* from formulas */
           qed
         qed
@@ -424,9 +425,9 @@ next
     next
       case case_2
       solve( (last(#y))  ∥ (last(#x))  ∥
-             (($Initiator = $Initiator.1) ∧ ($IdP = $Party)) )
+             (($Prover = $Prover.1) ∧ ($IdP = $Party)) )
         case case_1
-        solve( GenBrowserSession( $Initiator, $IdP, ~sess ) @ #y.1 )
+        solve( GenBrowserSession( $Prover, $IdP, ~sess ) @ #y.1 )
           case LinkClick
           by contradiction /* from formulas */
         qed
@@ -434,11 +435,11 @@ next
         case case_2
         solve( GenBrowserSession( user, domain.1, ~sess ) @ #y.1 )
           case LinkClick
-          solve( Browser( $Initiator, $IdP, ~sess ) ▶₀ #x )
+          solve( Browser( $Prover, $IdP, ~sess ) ▶₀ #x )
             case LinkClick
             by contradiction /* from formulas */
           next
-            case OIDCClientLogin
+            case OIDCAppLogin
             by contradiction /* from formulas */
           qed
         qed
@@ -448,25 +449,25 @@ next
       qed
     qed
   next
-    case OIDCAdversaryInit
-    solve( (¬($Initiator = $Initiator.1))  ∥ (¬($IdP = $IdP.1)) )
+    case OIDCAppLaunchBrowser
+    solve( (¬($Prover = $Prover.1))  ∥ (¬($IdP = $IdP.1)) )
       case case_1
       solve( (last(#y))  ∥ (last(#x))  ∥
-             (($Initiator = $Initiator.1) ∧ ($IdP = $IdP.1)) )
+             (($Prover = $Prover.1) ∧ ($IdP = $IdP.1)) )
         case case_1
-        solve( GenBrowserSession( $Initiator, $IdP, ~sess ) @ #y.1 )
-          case OIDCAdversaryInit
+        solve( GenBrowserSession( $Prover, $IdP, ~sess ) @ #y.1 )
+          case OIDCAppLaunchBrowser
           by contradiction /* from formulas */
         qed
       next
         case case_2
         solve( GenBrowserSession( user, domain, ~sess ) @ #y.1 )
-          case OIDCAdversaryInit
-          solve( Browser( $Initiator, $IdP, ~sess ) ▶₀ #x )
-            case OIDCAdversaryInit
+          case OIDCAppLaunchBrowser
+          solve( Browser( $Prover, $IdP, ~sess ) ▶₀ #x )
+            case OIDCAppLaunchBrowser
             by contradiction /* from formulas */
           next
-            case OIDCClientLogin
+            case OIDCAppLogin
             by contradiction /* from formulas */
           qed
         qed
@@ -477,74 +478,21 @@ next
     next
       case case_2
       solve( (last(#y))  ∥ (last(#x))  ∥
-             (($Initiator = $Initiator.1) ∧ ($IdP = $IdP.1)) )
+             (($Prover = $Prover.1) ∧ ($IdP = $IdP.1)) )
         case case_1
-        solve( GenBrowserSession( $Initiator, $IdP, ~sess ) @ #y.1 )
-          case OIDCAdversaryInit
+        solve( GenBrowserSession( $Prover, $IdP, ~sess ) @ #y.1 )
+          case OIDCAppLaunchBrowser
           by contradiction /* from formulas */
         qed
       next
         case case_2
         solve( GenBrowserSession( user, domain, ~sess ) @ #y.1 )
-          case OIDCAdversaryInit
-          solve( Browser( $Initiator, $IdP, ~sess ) ▶₀ #x )
-            case OIDCAdversaryInit
+          case OIDCAppLaunchBrowser
+          solve( Browser( $Prover, $IdP, ~sess ) ▶₀ #x )
+            case OIDCAppLaunchBrowser
             by contradiction /* from formulas */
           next
-            case OIDCClientLogin
-            by contradiction /* from formulas */
-          qed
-        qed
-      next
-        case case_3
-        by contradiction /* from formulas */
-      qed
-    qed
-  next
-    case OIDCClientInit
-    solve( (¬($Initiator = $Initiator.1))  ∥ (¬($IdP = $IdP.1)) )
-      case case_1
-      solve( (last(#y))  ∥ (last(#x))  ∥
-             (($Initiator = $Initiator.1) ∧ ($IdP = $IdP.1)) )
-        case case_1
-        solve( GenBrowserSession( $Initiator, $IdP, ~sess ) @ #y.1 )
-          case OIDCClientInit
-          by contradiction /* from formulas */
-        qed
-      next
-        case case_2
-        solve( GenBrowserSession( user, domain, ~sess ) @ #y.1 )
-          case OIDCClientInit
-          solve( Browser( $Initiator, $IdP, ~sess ) ▶₀ #x )
-            case OIDCClientInit
-            by contradiction /* from formulas */
-          next
-            case OIDCClientLogin
-            by contradiction /* from formulas */
-          qed
-        qed
-      next
-        case case_3
-        by contradiction /* from formulas */
-      qed
-    next
-      case case_2
-      solve( (last(#y))  ∥ (last(#x))  ∥
-             (($Initiator = $Initiator.1) ∧ ($IdP = $IdP.1)) )
-        case case_1
-        solve( GenBrowserSession( $Initiator, $IdP, ~sess ) @ #y.1 )
-          case OIDCClientInit
-          by contradiction /* from formulas */
-        qed
-      next
-        case case_2
-        solve( GenBrowserSession( user, domain, ~sess ) @ #y.1 )
-          case OIDCClientInit
-          solve( Browser( $Initiator, $IdP, ~sess ) ▶₀ #x )
-            case OIDCClientInit
-            by contradiction /* from formulas */
-          next
-            case OIDCClientLogin
+            case OIDCAppLogin
             by contradiction /* from formulas */
           qed
         qed
@@ -583,15 +531,9 @@ next
       by contradiction /* from formulas */
     qed
   next
-    case OIDCAdversaryInit
+    case OIDCAppLaunchBrowser
     solve( GenBrowserSession( user2, domain2, ~sess ) @ #y )
-      case OIDCAdversaryInit
-      by contradiction /* from formulas */
-    qed
-  next
-    case OIDCClientInit
-    solve( GenBrowserSession( user2, domain2, ~sess ) @ #y )
-      case OIDCClientInit
+      case OIDCAppLaunchBrowser
       by contradiction /* from formulas */
     qed
   qed
@@ -599,16 +541,16 @@ qed
 
 lemma UsernamesUnique [reuse]:
   all-traces
-  "∀ userA userB idp username pw #a #b.
-    ((ClaimUsername( userA, idp, username, pw ) @ #a) ∧
-     (ClaimUsername( userB, idp, username, pw ) @ #b)) ⇒
+  "∀ userA userB idp username pw1 pw2 #a #b.
+    ((ClaimUsername( userA, idp, username, pw1 ) @ #a) ∧
+     (ClaimUsername( userB, idp, username, pw2 ) @ #b)) ⇒
     (((#a = #b) ∧ (userA = userB)) ∨
      (∃ sk #t. CompromisedDomain( idp, sk ) @ #t))"
 /*
 guarded formula characterizing all counter-examples:
-"∃ userA userB idp username pw #a #b.
-  (ClaimUsername( userA, idp, username, pw ) @ #a) ∧
-  (ClaimUsername( userB, idp, username, pw ) @ #b)
+"∃ userA userB idp username pw1 pw2 #a #b.
+  (ClaimUsername( userA, idp, username, pw1 ) @ #a) ∧
+  (ClaimUsername( userB, idp, username, pw2 ) @ #b)
  ∧
   (((¬(#a = #b)) ∨ (¬(userA = userB)))) ∧
   (∀ sk #t. (CompromisedDomain( idp, sk ) @ #t) ⇒ ⊥)"
@@ -618,13 +560,317 @@ solve( !Domain( $IdP, ~IdPKey ) ▶₁ #a )
   case TLSSetup
   solve( !Domain( $IdP, ~IdPKey.1 ) ▶₁ #b )
     case TLSSetup
-    solve( St_IdPRegistration_Client( ~sess, $A, $IdP, $Username, pw
-           ) ▶₀ #a )
+    solve( St_IdPRegistration_App( ~sess, $A, $IdP, $Username, pw1 ) ▶₀ #a )
       case IdPSignUpInit
-      solve( St_IdPRegistration_Client( ~sess.1, $A.1, $IdP, $Username, ~n
+      solve( St_IdPRegistration_App( ~sess.1, $A.1, $IdP, $Username, pw2
              ) ▶₀ #b )
         case IdPSignUpInit
-        by contradiction /* from formulas */
+        solve( (¬(#a = #b))  ∥ (¬($A = $A.1)) )
+          case case_1
+          solve( !KU( tlsServerMsg(~sess, ~IdPKey, 'idp_ack') ) @ #vk )
+            case IdPSignUpServer
+            solve( !KU( tlsServerMsg(~sess.1, ~IdPKey, 'idp_ack') ) @ #vk.1 )
+              case IdPSignUpServer
+              solve( (#a < #b)  ∥ (#b < #a) )
+                case case_1
+                solve( !KU( tlsClientMsg(~sess, cert(~IdPKey), <'sign_up', username, pw>)
+                       ) @ #vk.2 )
+                  case IdPSignUpInit
+                  solve( !KU( tlsClientMsg(~sess.1, cert(~IdPKey),
+                                           <'sign_up', username, pw>)
+                         ) @ #vk.3 )
+                    case IdPSignUpInit
+                    by contradiction /* cyclic */
+                  next
+                    case c_tlsClientMsg
+                    solve( !KU( ~sess.1 ) @ #vk.4 )
+                      case IdPSignUpInit
+                      solve( !KU( ~IdPKey ) @ #vk.11 )
+                        case DomainCompromise
+                        by contradiction /* from formulas */
+                      next
+                        case OIDCAppLogin
+                        by solve( GenBrowserSession( $Prover, $IdP.1, ~IdPKey ) @ #y )
+                      next
+                        case OIDCIdPIssueCode
+                        solve( !KU( browserLaunch(~IdPKey, cert(~IdPKey.1),
+                                                  <'oidc_req', hash, nonce, code_challenge>)
+                               ) @ #vk.14 )
+                          case c_browserLaunch
+                          by contradiction /* cyclic */
+                        qed
+                      qed
+                    next
+                      case OIDCAppLogin
+                      by solve( GenBrowserSession( $Prover, $IdP.1, ~sess.1 ) @ #y )
+                    next
+                      case OIDCIdPIssueCode
+                      solve( !KU( browserLaunch(~sess.1, cert(~IdPKey.1),
+                                                <'oidc_req', hash, nonce, code_challenge>)
+                             ) @ #vk.13 )
+                        case c_browserLaunch
+                        by contradiction /* cyclic */
+                      qed
+                    qed
+                  qed
+                next
+                  case c_tlsClientMsg
+                  solve( !KU( ~sess ) @ #vk.4 )
+                    case IdPSignUpInit
+                    solve( !KU( ~IdPKey ) @ #vk.11 )
+                      case DomainCompromise
+                      by contradiction /* from formulas */
+                    next
+                      case OIDCAppLogin
+                      by solve( GenBrowserSession( $Prover, $IdP.1, ~IdPKey ) @ #y )
+                    next
+                      case OIDCIdPIssueCode
+                      solve( !KU( browserLaunch(~IdPKey, cert(~IdPKey.1),
+                                                <'oidc_req', hash, nonce, code_challenge>)
+                             ) @ #vk.14 )
+                        case c_browserLaunch
+                        by contradiction /* cyclic */
+                      qed
+                    qed
+                  next
+                    case OIDCAppLogin
+                    by solve( GenBrowserSession( $Prover, $IdP.1, ~sess ) @ #y )
+                  next
+                    case OIDCIdPIssueCode
+                    solve( !KU( browserLaunch(~sess, cert(~IdPKey.1),
+                                              <'oidc_req', hash, nonce, code_challenge>)
+                           ) @ #vk.13 )
+                      case c_browserLaunch
+                      by contradiction /* cyclic */
+                    qed
+                  qed
+                qed
+              next
+                case case_2
+                solve( !KU( tlsClientMsg(~sess, cert(~IdPKey), <'sign_up', username, pw>)
+                       ) @ #vk.2 )
+                  case IdPSignUpInit
+                  solve( !KU( tlsClientMsg(~sess.1, cert(~IdPKey),
+                                           <'sign_up', username, pw>)
+                         ) @ #vk.3 )
+                    case IdPSignUpInit
+                    by contradiction /* cyclic */
+                  next
+                    case c_tlsClientMsg
+                    solve( !KU( ~sess.1 ) @ #vk.4 )
+                      case IdPSignUpInit
+                      solve( !KU( ~IdPKey ) @ #vk.11 )
+                        case DomainCompromise
+                        by contradiction /* from formulas */
+                      next
+                        case OIDCAppLogin
+                        by solve( GenBrowserSession( $Prover, $IdP.1, ~IdPKey ) @ #y )
+                      next
+                        case OIDCIdPIssueCode
+                        solve( !KU( browserLaunch(~IdPKey, cert(~IdPKey.1),
+                                                  <'oidc_req', hash, nonce, code_challenge>)
+                               ) @ #vk.14 )
+                          case c_browserLaunch
+                          by contradiction /* cyclic */
+                        qed
+                      qed
+                    next
+                      case OIDCAppLogin
+                      by solve( GenBrowserSession( $Prover, $IdP.1, ~sess.1 ) @ #y )
+                    next
+                      case OIDCIdPIssueCode
+                      solve( !KU( browserLaunch(~sess.1, cert(~IdPKey.1),
+                                                <'oidc_req', hash, nonce, code_challenge>)
+                             ) @ #vk.13 )
+                        case c_browserLaunch
+                        by contradiction /* cyclic */
+                      qed
+                    qed
+                  qed
+                next
+                  case c_tlsClientMsg
+                  solve( !KU( ~sess ) @ #vk.4 )
+                    case IdPSignUpInit
+                    solve( !KU( ~IdPKey ) @ #vk.11 )
+                      case DomainCompromise
+                      by contradiction /* from formulas */
+                    next
+                      case OIDCAppLogin
+                      by solve( GenBrowserSession( $Prover, $IdP.1, ~IdPKey ) @ #y )
+                    next
+                      case OIDCIdPIssueCode
+                      solve( !KU( browserLaunch(~IdPKey, cert(~IdPKey.1),
+                                                <'oidc_req', hash, nonce, code_challenge>)
+                             ) @ #vk.14 )
+                        case c_browserLaunch
+                        by contradiction /* cyclic */
+                      qed
+                    qed
+                  next
+                    case OIDCAppLogin
+                    by solve( GenBrowserSession( $Prover, $IdP.1, ~sess ) @ #y )
+                  next
+                    case OIDCIdPIssueCode
+                    solve( !KU( browserLaunch(~sess, cert(~IdPKey.1),
+                                              <'oidc_req', hash, nonce, code_challenge>)
+                           ) @ #vk.13 )
+                      case c_browserLaunch
+                      by contradiction /* cyclic */
+                    qed
+                  qed
+                qed
+              qed
+            next
+              case c_tlsServerMsg
+              solve( !KU( ~IdPKey ) @ #vk.4 )
+                case DomainCompromise
+                by contradiction /* from formulas */
+              next
+                case OIDCAppLogin
+                by solve( GenBrowserSession( $Prover, $IdP.1, ~IdPKey ) @ #y )
+              next
+                case OIDCIdPIssueCode
+                solve( !KU( browserLaunch(~IdPKey, cert(~IdPKey.1),
+                                          <'oidc_req', hash, nonce, code_challenge>)
+                       ) @ #vk.8 )
+                  case c_browserLaunch
+                  by contradiction /* cyclic */
+                qed
+              qed
+            qed
+          next
+            case c_tlsServerMsg
+            solve( !KU( ~IdPKey ) @ #vk.3 )
+              case DomainCompromise
+              by contradiction /* from formulas */
+            next
+              case OIDCAppLogin
+              by solve( GenBrowserSession( $Prover, $IdP.1, ~IdPKey ) @ #y )
+            next
+              case OIDCIdPIssueCode
+              solve( !KU( browserLaunch(~IdPKey, cert(~IdPKey.1),
+                                        <'oidc_req', hash, nonce, code_challenge>)
+                     ) @ #vk.7 )
+                case c_browserLaunch
+                by contradiction /* cyclic */
+              qed
+            qed
+          qed
+        next
+          case case_2
+          solve( !KU( tlsServerMsg(~sess, ~IdPKey, 'idp_ack') ) @ #vk )
+            case IdPSignUpServer
+            solve( !KU( tlsServerMsg(~sess.1, ~IdPKey, 'idp_ack') ) @ #vk.1 )
+              case IdPSignUpServer
+              solve( !KU( tlsClientMsg(~sess, cert(~IdPKey), <'sign_up', username, pw>)
+                     ) @ #vk.2 )
+                case IdPSignUpInit
+                solve( !KU( tlsClientMsg(~sess.1, cert(~IdPKey),
+                                         <'sign_up', username, pw>)
+                       ) @ #vk.3 )
+                  case IdPSignUpInit
+                  by contradiction /* from formulas */
+                next
+                  case c_tlsClientMsg
+                  solve( !KU( ~sess.1 ) @ #vk.4 )
+                    case IdPSignUpInit
+                    solve( !KU( ~IdPKey ) @ #vk.11 )
+                      case DomainCompromise
+                      by contradiction /* from formulas */
+                    next
+                      case OIDCAppLogin
+                      by solve( GenBrowserSession( $Prover, $IdP.1, ~IdPKey ) @ #y )
+                    next
+                      case OIDCIdPIssueCode
+                      solve( !KU( browserLaunch(~IdPKey, cert(~IdPKey.1),
+                                                <'oidc_req', hash, nonce, code_challenge>)
+                             ) @ #vk.14 )
+                        case c_browserLaunch
+                        by contradiction /* cyclic */
+                      qed
+                    qed
+                  next
+                    case OIDCAppLogin
+                    by solve( GenBrowserSession( $Prover, $IdP.1, ~sess.1 ) @ #y )
+                  next
+                    case OIDCIdPIssueCode
+                    solve( !KU( browserLaunch(~sess.1, cert(~IdPKey.1),
+                                              <'oidc_req', hash, nonce, code_challenge>)
+                           ) @ #vk.13 )
+                      case c_browserLaunch
+                      by contradiction /* cyclic */
+                    qed
+                  qed
+                qed
+              next
+                case c_tlsClientMsg
+                solve( !KU( ~sess ) @ #vk.4 )
+                  case IdPSignUpInit
+                  solve( !KU( ~IdPKey ) @ #vk.11 )
+                    case DomainCompromise
+                    by contradiction /* from formulas */
+                  next
+                    case OIDCAppLogin
+                    by solve( GenBrowserSession( $Prover, $IdP.1, ~IdPKey ) @ #y )
+                  next
+                    case OIDCIdPIssueCode
+                    solve( !KU( browserLaunch(~IdPKey, cert(~IdPKey.1),
+                                              <'oidc_req', hash, nonce, code_challenge>)
+                           ) @ #vk.14 )
+                      case c_browserLaunch
+                      by contradiction /* cyclic */
+                    qed
+                  qed
+                next
+                  case OIDCAppLogin
+                  by solve( GenBrowserSession( $Prover, $IdP.1, ~sess ) @ #y )
+                next
+                  case OIDCIdPIssueCode
+                  solve( !KU( browserLaunch(~sess, cert(~IdPKey.1),
+                                            <'oidc_req', hash, nonce, code_challenge>)
+                         ) @ #vk.13 )
+                    case c_browserLaunch
+                    by contradiction /* cyclic */
+                  qed
+                qed
+              qed
+            next
+              case c_tlsServerMsg
+              solve( !KU( ~IdPKey ) @ #vk.4 )
+                case DomainCompromise
+                by contradiction /* from formulas */
+              next
+                case OIDCAppLogin
+                by solve( GenBrowserSession( $Prover, $IdP.1, ~IdPKey ) @ #y )
+              next
+                case OIDCIdPIssueCode
+                solve( !KU( browserLaunch(~IdPKey, cert(~IdPKey.1),
+                                          <'oidc_req', hash, nonce, code_challenge>)
+                       ) @ #vk.8 )
+                  case c_browserLaunch
+                  by contradiction /* cyclic */
+                qed
+              qed
+            qed
+          next
+            case c_tlsServerMsg
+            solve( !KU( ~IdPKey ) @ #vk.3 )
+              case DomainCompromise
+              by contradiction /* from formulas */
+            next
+              case OIDCAppLogin
+              by solve( GenBrowserSession( $Prover, $IdP.1, ~IdPKey ) @ #y )
+            next
+              case OIDCIdPIssueCode
+              solve( !KU( browserLaunch(~IdPKey, cert(~IdPKey.1),
+                                        <'oidc_req', hash, nonce, code_challenge>)
+                     ) @ #vk.7 )
+                case c_browserLaunch
+                by contradiction /* cyclic */
+              qed
+            qed
+          qed
+        qed
       qed
     qed
   qed
@@ -647,8 +893,7 @@ guarded formula characterizing all counter-examples:
 simplify
 solve( !Domain( $IdP, ~IdPKey ) ▶₁ #t )
   case TLSSetup
-  solve( St_IdPRegistration_Client( ~sess, $A, $IdP, $Username, pw
-         ) ▶₀ #t )
+  solve( St_IdPRegistration_App( ~sess, $A, $IdP, $Username, pw ) ▶₀ #t )
     case IdPSignUpInit
     solve( !KU( tlsServerMsg(~sess, ~IdPKey, 'idp_ack') ) @ #vk )
       case IdPSignUpServer
@@ -664,26 +909,26 @@ solve( !Domain( $IdP, ~IdPKey ) ▶₁ #t )
             case DomainCompromise
             by contradiction /* from formulas */
           next
-            case OIDCClientLogin
-            by solve( GenBrowserSession( $Initiator, $IdP.1, ~IdPKey ) @ #y )
+            case OIDCAppLogin
+            by solve( GenBrowserSession( $Prover, $IdP.1, ~IdPKey ) @ #y )
           next
             case OIDCIdPIssueCode
-            solve( !KU( tlsClientMsg(~IdPKey, cert(~IdPKey.1),
-                                     <'oidc_req', hash, nonce, code_challenge>)
+            solve( !KU( browserLaunch(~IdPKey, cert(~IdPKey.1),
+                                      <'oidc_req', hash, nonce, code_challenge>)
                    ) @ #vk.12 )
-              case c_tlsClientMsg
+              case c_browserLaunch
               by contradiction /* cyclic */
             qed
           qed
         next
-          case OIDCClientLogin
-          by solve( GenBrowserSession( $Initiator, $IdP.1, ~sess ) @ #y )
+          case OIDCAppLogin
+          by solve( GenBrowserSession( $Prover, $IdP.1, ~sess ) @ #y )
         next
           case OIDCIdPIssueCode
-          solve( !KU( tlsClientMsg(~sess, cert(~IdPKey.1),
-                                   <'oidc_req', hash, nonce, code_challenge>)
+          solve( !KU( browserLaunch(~sess, cert(~IdPKey.1),
+                                    <'oidc_req', hash, nonce, code_challenge>)
                  ) @ #vk.11 )
-            case c_tlsClientMsg
+            case c_browserLaunch
             by contradiction /* cyclic */
           qed
         qed
@@ -694,14 +939,14 @@ solve( !Domain( $IdP, ~IdPKey ) ▶₁ #t )
         case DomainCompromise
         by contradiction /* from formulas */
       next
-        case OIDCClientLogin
-        by solve( GenBrowserSession( $Initiator, $IdP.1, ~IdPKey ) @ #y )
+        case OIDCAppLogin
+        by solve( GenBrowserSession( $Prover, $IdP.1, ~IdPKey ) @ #y )
       next
         case OIDCIdPIssueCode
-        solve( !KU( tlsClientMsg(~IdPKey, cert(~IdPKey.1),
-                                 <'oidc_req', hash, nonce, code_challenge>)
+        solve( !KU( browserLaunch(~IdPKey, cert(~IdPKey.1),
+                                  <'oidc_req', hash, nonce, code_challenge>)
                ) @ #vk.6 )
-          case c_tlsClientMsg
+          case c_browserLaunch
           by contradiction /* cyclic */
         qed
       qed
@@ -712,73 +957,69 @@ qed
 lemma PasswordsConfidential [reuse]:
   all-traces
   "∀ user idp username pw #t.
-    (ClaimUsername( user, idp, username, pw ) @ #t) ⇒
+    (UsernameApp( user, idp, username, pw ) @ #t) ⇒
     (((¬(∃ #x. !KU( pw ) @ #x)) ∨
       (∃ sk #x. CompromisedDomain( idp, sk ) @ #x)) ∨
      (∃ someone #x. CompromisedAccount( someone, idp, username ) @ #x))"
 /*
 guarded formula characterizing all counter-examples:
 "∃ user idp username pw #t.
-  (ClaimUsername( user, idp, username, pw ) @ #t)
+  (UsernameApp( user, idp, username, pw ) @ #t)
  ∧
   (∃ #x. (!KU( pw ) @ #x)) ∧
   (∀ sk #x. (CompromisedDomain( idp, sk ) @ #x) ⇒ ⊥) ∧
   (∀ someone #x. (CompromisedAccount( someone, idp, username ) @ #x) ⇒ ⊥)"
 */
 simplify
-solve( !Domain( $IdP, ~IdPKey ) ▶₁ #t )
+solve( !Domain( $IdP, ~IdPKey ) ▶₂ #t )
   case TLSSetup
-  solve( St_IdPRegistration_Client( ~sess, $A, $IdP, $Username, pw
-         ) ▶₀ #t )
+  solve( !KU( ~n ) @ #x )
+    case IdPAccountCompromise
+    by contradiction /* from formulas */
+  next
     case IdPSignUpInit
-    solve( !KU( ~n ) @ #x )
-      case IdPAccountCompromise
+    solve( !KU( ~IdPKey ) @ #vk )
+      case DomainCompromise
       by contradiction /* from formulas */
     next
-      case IdPSignUpInit
-      solve( !KU( ~IdPKey ) @ #vk.1 )
-        case DomainCompromise
-        by contradiction /* from formulas */
-      next
-        case OIDCClientLogin
-        by solve( GenBrowserSession( $Initiator, $IdP.1, ~IdPKey ) @ #y )
-      next
-        case OIDCIdPIssueCode
-        solve( !KU( tlsClientMsg(~IdPKey, cert(~IdPKey.1),
-                                 <'oidc_req', hash, nonce, code_challenge>)
-               ) @ #vk.4 )
-          case c_tlsClientMsg
-          by contradiction /* cyclic */
-        qed
-      qed
-    next
-      case OIDCClientLogin_case_1
-      by solve( GenBrowserSession( $Initiator, $IdP.1, ~n ) @ #y )
-    next
-      case OIDCClientLogin_case_2
-      solve( !KU( ~IdPKey ) @ #vk.2 )
-        case DomainCompromise
-        by contradiction /* from formulas */
-      next
-        case OIDCClientLogin
-        by solve( GenBrowserSession( $Initiator, $IdP.1, ~IdPKey ) @ #y.1 )
-      next
-        case OIDCIdPIssueCode
-        solve( !KU( tlsClientMsg(~IdPKey, cert(~IdPKey.1),
-                                 <'oidc_req', hash, nonce, code_challenge>)
-               ) @ #vk.5 )
-          case c_tlsClientMsg
-          by contradiction /* cyclic */
-        qed
-      qed
+      case OIDCAppLogin
+      by solve( GenBrowserSession( $Prover, $IdP.1, ~IdPKey ) @ #y )
     next
       case OIDCIdPIssueCode
-      solve( !KU( tlsClientMsg(~n, cert(~IdPKey.1),
-                               <'oidc_req', hash, nonce, code_challenge>)
+      solve( !KU( browserLaunch(~IdPKey, cert(~IdPKey.1),
+                                <'oidc_req', hash, nonce, code_challenge>)
              ) @ #vk.3 )
-        case c_tlsClientMsg
+        case c_browserLaunch
         by contradiction /* cyclic */
       qed
+    qed
+  next
+    case OIDCAppLogin_case_1
+    by solve( GenBrowserSession( $Prover, $IdP.1, ~n ) @ #y )
+  next
+    case OIDCAppLogin_case_2
+    solve( !KU( ~IdPKey ) @ #vk.1 )
+      case DomainCompromise
+      by contradiction /* from formulas */
+    next
+      case OIDCAppLogin
+      by solve( GenBrowserSession( $Prover, $IdP.1, ~IdPKey ) @ #y.1 )
+    next
+      case OIDCIdPIssueCode
+      solve( !KU( browserLaunch(~IdPKey, cert(~IdPKey.1),
+                                <'oidc_req', hash, nonce, code_challenge>)
+             ) @ #vk.5 )
+        case c_browserLaunch
+        by contradiction /* cyclic */
+      qed
+    qed
+  next
+    case OIDCIdPIssueCode
+    solve( !KU( browserLaunch(~n, cert(~IdPKey.1),
+                              <'oidc_req', hash, nonce, code_challenge>)
+           ) @ #vk.2 )
+      case c_browserLaunch
+      by contradiction /* cyclic */
     qed
   qed
 qed
@@ -807,9 +1048,9 @@ solve( !SignalDomain( ~signal ) ▶₀ #a )
   case SignalServer
   solve( !SignalDomain( ~signal.1 ) ▶₀ #b )
     case SignalServer
-    solve( St_SignalReg_ClientWait( $A, ~sess, sk ) ▶₁ #a )
+    solve( St_SignalReg_AppWait( $A, ~sess, sk ) ▶₁ #a )
       case SignalRespond
-      solve( St_SignalReg_ClientWait( $A.1, ~sess.1, ~n ) ▶₁ #b )
+      solve( St_SignalReg_AppWait( $A.1, ~sess.1, ~n ) ▶₁ #b )
         case SignalRespond
         by contradiction /* from formulas */
       qed
@@ -822,49 +1063,93 @@ rule (modulo E) OIDCIdPIssueCode:
    St_OIDCServer_Auth( $IdP, ~sess, hash, nonce, code_challenge ),
    In( tlsClientMsg(~sess, cert(~IdPKey), <'login', $Username, pw>) ),
    !IdPAccountServer( $IdP, $Username, pw ), !IdPLtk( $IdP, sk ),
-   !Domain( $IdP, ~IdPKey ), !SignalClientDomain( $IdP, ~signalClient ),
+   !Domain( $IdP, ~IdPKey ), !SignalAppDomain( $IdP, ~signalApp ),
    Fr( ~code )
    ]
   --[
-  IdPIssueCode( $IdP, $Username, ~code ), IsNonce( nonce ),
+  IdPIssueCode( $IdP, $Username, ~code ), IsPW( pw ), IsNonce( nonce ),
   GenCode( $IdP, ~code )
   ]->
    [
-   Out( browserForward(~sess, cert(~signalClient), <'code', ~code, nonce>)
-   ),
+   Out( browserLaunch(~sess, cert(~signalApp), <'code', ~code, nonce>) ),
    St_OIDCIdP_Code( $IdP, $Username, ~code, hash, nonce, code_challenge )
    ]
 
   /* has exactly the trivial AC variant */
 
-rule (modulo E) LinkClick:
-   [ Fr( ~sess ), In( <code, nonce> ), !Domain( $Party, ~domain ) ]
-  --[ GenBrowserSession( $Initiator, $Party, ~sess ) ]->
-   [
-   Out( browserForward(~sess, cert(~domain), <'code', code, nonce>) ),
-   Browser( $Initiator, $Party, ~sess )
-   ]
+lemma IsPW [reuse]:
+  all-traces
+  "∀ pw #x.
+    (IsPW( pw ) @ #x) ⇒
+    ((∃ u i un #y. UsernameApp( u, i, un, pw ) @ #y) ∨
+     (∃ #y. !KU( pw ) @ #y))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ pw #x.
+  (IsPW( pw ) @ #x)
+ ∧
+  (∀ u i un #y. (UsernameApp( u, i, un, pw ) @ #y) ⇒ ⊥) ∧
+  (∀ #y. (!KU( pw ) @ #y) ⇒ ⊥)"
+*/
+simplify
+solve( St_OIDCServer_Auth( $IdP, ~sess, hash, nonce, code_challenge
+       ) ▶₀ #x )
+  case OIDCIdPInit
+  solve( !KU( tlsClientMsg(~sess, cert(~IdPKey), <'login', $Username, pw>)
+         ) @ #vk )
+    case OIDCAppLogin
+    by contradiction /* from formulas */
+  next
+    case c_tlsClientMsg
+    by contradiction /* from formulas */
+  qed
+qed
 
-  /* has exactly the trivial AC variant */
+lemma UserAccountRequiresSignUp [reuse]:
+  all-traces
+  "∀ u i un pw #x.
+    (ClaimUsername( u, i, un, pw ) @ #x) ⇒
+    ((∃ #y. UsernameApp( u, i, un, pw ) @ #y) ∨
+     (∃ d #y. CompromisedDomain( i, d ) @ #y))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ u i un pw #x.
+  (ClaimUsername( u, i, un, pw ) @ #x)
+ ∧
+  (∀ #y. (UsernameApp( u, i, un, pw ) @ #y) ⇒ ⊥) ∧
+  (∀ d #y. (CompromisedDomain( i, d ) @ #y) ⇒ ⊥)"
+*/
+simplify
+solve( (∃ #x. (UsernameServer( $IdP, $Username, pw ) @ #x))  ∥
+       (∃ sk #x. (CompromisedDomain( $IdP, sk ) @ #x)) )
+  case case_1
+  solve( St_IdPRegistration_App( ~sess, $A, $IdP, $Username, pw ) ▶₀ #x )
+    case IdPSignUpInit
+    by contradiction /* from formulas */
+  qed
+next
+  case case_2
+  by contradiction /* from formulas */
+qed
 
-rule (modulo E) OIDCClientCodeRedirect:
+rule (modulo E) OIDCAppCodeRedirect:
    [
-   Browser( $Initiator, drop, ~sess ),
-   In( browserForward(~sess, cert(~signalClient), <'code', code, nonce>) ),
-   !SignalClientDomain( $IdP, ~signalClient ), !Domain( $IdP, ~IdPKey ),
-   SessionStore( $Initiator, nonce, <$IdP, hash, salt, code_verifier> ),
+   Browser( $Prover, drop, ~sess ),
+   In( browserLaunch(~sess, cert(~signalApp), <'code', code, nonce>) ),
+   !SignalAppDomain( $IdP, ~signalApp ), !Domain( $IdP, ~IdPKey ),
+   SessionStore( $Prover, nonce, <$IdP, hash, salt, code_verifier> ),
    Fr( ~sessPost )
    ]
   --[
-  ClientReceiveCode( $Initiator, $IdP, code ),
-  SelfIssued( $Initiator, nonce ), Neq( nonce, 'null' ), IsCode( code )
+  AppReceiveCode( $Prover, $IdP, code ), SelfIssued( $Prover, nonce ),
+  Neq( nonce, 'null' ), IsCode( code )
   ]->
    [
    Out( tlsClientMsg(~sessPost, cert(~IdPKey),
                      <'token_req', code, code_verifier>)
    ),
-   St_OIDCClient_CodeReq( $Initiator, $IdP, ~sessPost, hash, salt, code ),
-   SessionStore( $Initiator, 'null', 'null' )
+   St_OIDCApp_CodeReq( $Prover, $IdP, ~sessPost, hash, salt, code ),
+   SessionStore( $Prover, 'null', 'null' )
    ]
 
   /* has exactly the trivial AC variant */
@@ -920,31 +1205,35 @@ restriction Neq:
 
 lemma TokenFormatAndOTPLearning [sources]:
   all-traces
-  "(((∀ token #i.
-       (IsToken( token ) @ #i) ⇒
-       (∃ first second user idp nonce hashed sk.
-         ((((((token = <first, second>) ∧ (first = <idp, user, nonce, hashed>)) ∧
-             ((∃ #h. (!KU( idp ) @ #h) ∧ (#h < #i)) ∨
-              (∃ sk.1 #h. ClaimIdPKey( idp, sk.1 ) @ #h))) ∧
-            ((∃ #h. (!KU( user ) @ #h) ∧ (#h < #i)) ∨
-             (∃ party pw #h. ClaimUsername( party, idp, user, pw ) @ #h))) ∧
-           ((∃ #h. (!KU( nonce ) @ #h) ∧ (#h < #i)) ∨
-            (∃ #h. GenNonce( nonce ) @ #h))) ∧
-          ((∃ #h. (!KU( hashed ) @ #h) ∧ (#h < #i)) ∨
-           (∃ fp salt. hashed = h(fp, salt)))) ∧
-         (second = sign(first, sk)))) ∧
-     (∀ nonce #i.
-       (IsNonce( nonce ) @ #i) ⇒
-       ((∃ #h. (!KU( nonce ) @ #h) ∧ (#h < #i)) ∨
-        (∃ #h. GenNonce( nonce ) @ #h)))) ∧
-    (∀ code #i.
-      (IsCode( code ) @ #i) ⇒
-      ((∃ #h. (!KU( code ) @ #h) ∧ (#h < #i)) ∨
-       (∃ idp #h. GenCode( idp, code ) @ #h)))) ∧
-   (∀ chall #i.
-     (OTPRespond( chall ) @ #i) ⇒
-     ((∃ #j. (OTPChallenge( chall ) @ #j) ∧ (#j < #i)) ∨
-      (∃ #j. (!KU( chall ) @ #j) ∧ (#j < #i))))"
+  "((((∀ token #i.
+        (IsToken( token ) @ #i) ⇒
+        (∃ first second user idp nonce hashed sk.
+          ((((((token = <first, second>) ∧ (first = <idp, user, nonce, hashed>)) ∧
+              ((∃ #h. (!KU( idp ) @ #h) ∧ (#h < #i)) ∨
+               (∃ sk.1 #h. ClaimIdPKey( idp, sk.1 ) @ #h))) ∧
+             ((∃ #h. (!KU( user ) @ #h) ∧ (#h < #i)) ∨
+              (∃ party pw #h. ClaimUsername( party, idp, user, pw ) @ #h))) ∧
+            ((∃ #h. (!KU( nonce ) @ #h) ∧ (#h < #i)) ∨
+             (∃ #h. GenNonce( nonce ) @ #h))) ∧
+           ((∃ #h. (!KU( hashed ) @ #h) ∧ (#h < #i)) ∨
+            (∃ fp salt. hashed = h(fp, salt)))) ∧
+          (second = sign(first, sk)))) ∧
+      (∀ nonce #i.
+        (IsNonce( nonce ) @ #i) ⇒
+        ((∃ #h. (!KU( nonce ) @ #h) ∧ (#h < #i)) ∨
+         (∃ #h. GenNonce( nonce ) @ #h)))) ∧
+     (∀ code #i.
+       (IsCode( code ) @ #i) ⇒
+       ((∃ #h. (!KU( code ) @ #h) ∧ (#h < #i)) ∨
+        (∃ idp #h. GenCode( idp, code ) @ #h)))) ∧
+    (∀ chall #i.
+      (OTPRespond( chall ) @ #i) ⇒
+      ((∃ #j. (OTPChallenge( chall ) @ #j) ∧ (#j < #i)) ∨
+       (∃ #j. (!KU( chall ) @ #j) ∧ (#j < #i))))) ∧
+   (∀ ltk #i.
+     (ShareSignalKey( ltk ) @ #i) ⇒
+     ((∃ sk #j. (IsSignalKey( sk ) @ #j) ∧ (ltk = pk(sk))) ∨
+      (∃ #j. (!KU( ltk ) @ #j) ∧ (#j < #i))))"
 /*
 guarded formula characterizing all counter-examples:
 "((∃ token #i.
@@ -977,36 +1266,36 @@ guarded formula characterizing all counter-examples:
     (OTPRespond( chall ) @ #i)
    ∧
     (∀ #j. (OTPChallenge( chall ) @ #j) ⇒ ¬(#j < #i)) ∧
-    (∀ #j. (!KU( chall ) @ #j) ⇒ ¬(#j < #i))))"
+    (∀ #j. (!KU( chall ) @ #j) ⇒ ¬(#j < #i))) ∨
+  (∃ ltk #i.
+    (ShareSignalKey( ltk ) @ #i)
+   ∧
+    (∀ sk #j. (IsSignalKey( sk ) @ #j) ∧ (ltk = pk(sk)) ⇒ ⊥) ∧
+    (∀ #j. (!KU( ltk ) @ #j) ⇒ ¬(#j < #i))))"
 */
 by sorry
 
-rule (modulo E) pk_req:
-   [ Fr( ~sess ), !Domain( $IdP, ~IdPKey ) ]
-  -->
-   [ Out( tlsClientMsg(~sess, cert(~IdPKey), 'pk_req') ) ]
-
-  /* has exactly the trivial AC variant */
-
 rule (modulo E) OIDCTokenForward:
    [
-   St_OIDCClient_CodeReq( $Initiator, $IdP, ~sessPost, hash, salt, code ),
-   !Domain( $IdP, ~IdPKey ),
-   In( tlsServerMsg(~sess, ~IdPKey, <'pk_response', pkIdP>) ),
+   St_OIDCApp_CodeReq( $Prover, $IdP, ~sessPost, hash, salt, code ),
+   !Domain( $IdP, ~IdPKey ), !SignalDomain( ~signal ),
+   In( tlsServerMsg(~sess1, ~IdPKey, <'idp_pk_response', pkIdP>) ),
+   In( tlsServerMsg(~sess2, ~signal,
+                    <'signal_pk_response', phone, pkVerifier>)
+   ),
    In( tlsServerMsg(~sessPost, ~IdPKey,
                     <'token', <$IdP, username, nonce, hash>, signature>)
    ),
-   !SignalLtkClient( $Initiator, skInitiator ),
-   !SignalLtkServer( phone, pkVerifier )
+   !SignalLtkApp( $Prover, skProver )
    ]
   --[
-  Eq( h(<trim(pk(skInitiator)), trim(pkVerifier)>, salt), hash ),
+  Eq( h(fingerprint(<pk(skProver), pkVerifier>), salt), hash ),
   Eq( verify(signature, <$IdP, username, nonce, hash>, pkIdP), true ),
-  Forward( $Initiator, <<$IdP, username, nonce, hash>, signature> ),
+  Forward( $Prover, <<$IdP, username, nonce, hash>, signature> ),
   IsToken( <<$IdP, username, nonce, hash>, signature> ), UsedCode( code )
   ]->
    [
-   Out( signalMsg(skInitiator, pkVerifier,
+   Out( signalMsg(skProver, pkVerifier,
                   <'fwd_token', <<$IdP, username, nonce, hash>, signature>, salt>)
    ),
    Out( code )
@@ -1015,47 +1304,49 @@ rule (modulo E) OIDCTokenForward:
   /*
   rule (modulo AC) OIDCTokenForward:
      [
-     St_OIDCClient_CodeReq( $Initiator, $IdP, ~sessPost, hash, salt, code ),
-     !Domain( $IdP, ~IdPKey ),
-     In( tlsServerMsg(~sess, ~IdPKey, <'pk_response', pkIdP>) ),
+     St_OIDCApp_CodeReq( $Prover, $IdP, ~sessPost, hash, salt, code ),
+     !Domain( $IdP, ~IdPKey ), !SignalDomain( ~signal ),
+     In( tlsServerMsg(~sess1, ~IdPKey, <'idp_pk_response', pkIdP>) ),
+     In( tlsServerMsg(~sess2, ~signal,
+                      <'signal_pk_response', phone, pkVerifier>)
+     ),
      In( tlsServerMsg(~sessPost, ~IdPKey,
                       <'token', <$IdP, username, nonce, hash>, signature>)
      ),
-     !SignalLtkClient( $Initiator, skInitiator ),
-     !SignalLtkServer( phone, pkVerifier )
+     !SignalLtkApp( $Prover, skProver )
      ]
     --[
-    Eq( h(<trim(pk(skInitiator)), trim(pkVerifier)>, salt), hash ),
+    Eq( h(fingerprint(<pk(skProver), pkVerifier>), salt), hash ),
     Eq( z, true ),
-    Forward( $Initiator, <<$IdP, username, nonce, hash>, signature> ),
+    Forward( $Prover, <<$IdP, username, nonce, hash>, signature> ),
     IsToken( <<$IdP, username, nonce, hash>, signature> ), UsedCode( code )
     ]->
      [
-     Out( signalMsg(skInitiator, pkVerifier,
+     Out( signalMsg(skProver, pkVerifier,
                     <'fwd_token', <<$IdP, username, nonce, hash>, signature>, salt>)
      ),
      Out( code )
      ]
     variants (modulo AC)
-    1. $IdP  = $IdP.35
-       hash  = hash.41
-       nonce = nonce.42
-       pkIdP = pkIdP.44
+    1. $IdP  = $IdP.40
+       hash  = hash.48
+       nonce = nonce.49
+       pkIdP = pkIdP.51
        signature
-             = signature.47
+             = signature.54
        username
-             = username.49
-       z     = verify(signature.47, <$IdP.35, username.49, nonce.42, hash.41>,
-                      pkIdP.44)
+             = username.56
+       z     = verify(signature.54, <$IdP.40, username.56, nonce.49, hash.48>,
+                      pkIdP.51)
     
-    2. $IdP  = $IdP.68
-       hash  = hash.74
-       nonce = nonce.75
-       pkIdP = pk(x.134)
+    2. $IdP  = $IdP.101
+       hash  = hash.109
+       nonce = nonce.110
+       pkIdP = pk(x.200)
        signature
-             = sign(<$IdP.68, username.82, nonce.75, hash.74>, x.134)
+             = sign(<$IdP.101, username.117, nonce.110, hash.109>, x.200)
        username
-             = username.82
+             = username.117
        z     = true
   */
 
@@ -1066,9 +1357,9 @@ lemma CodeIsSingleUse [use_induction, reuse]:
       (UseCode( code ) @ #x)) ∧
      (UseCode( code ) @ #y)) ⇒
     (((#x = #y) ∨ (∃ domain #x.1. CompromisedDomain( idp, domain ) @ #x.1)) ∨
-     (∃ signalClient domain #x.1 #y.1.
-       (IsSignalClientFor( idp, signalClient ) @ #x.1) ∧
-       (CompromisedDomain( signalClient, domain ) @ #y.1)))"
+     (∃ signalApp domain #x.1 #y.1.
+       (IsSignalAppFor( idp, signalApp ) @ #x.1) ∧
+       (CompromisedDomain( signalApp, domain ) @ #y.1)))"
 /*
 guarded formula characterizing all counter-examples:
 "∃ idp code #a #b #x #y.
@@ -1079,9 +1370,9 @@ guarded formula characterizing all counter-examples:
  ∧
   (¬(#x = #y)) ∧
   (∀ domain #x.1. (CompromisedDomain( idp, domain ) @ #x.1) ⇒ ⊥) ∧
-  (∀ signalClient domain #x.1 #y.1.
-    (IsSignalClientFor( idp, signalClient ) @ #x.1) ∧
-    (CompromisedDomain( signalClient, domain ) @ #y.1)
+  (∀ signalApp domain #x.1 #y.1.
+    (IsSignalAppFor( idp, signalApp ) @ #x.1) ∧
+    (CompromisedDomain( signalApp, domain ) @ #y.1)
    ⇒
     ⊥)"
 */
@@ -1096,10 +1387,10 @@ next
     solve( St_OIDCServer_Auth( $IdP, ~sess, hash, nonce, code_challenge
            ) ▶₀ #a )
       case OIDCIdPInit
-      solve( St_OIDCClient_CodeReq( $Initiator, $IdP.1, ~sessPost,
-                                    h(<trim(pk(skInitiator)), trim(pkVerifier)>, salt), salt, ~code
+      solve( St_OIDCApp_CodeReq( $Prover, $IdP.1, ~sessPost,
+                                 h(fingerprint(<pk(skProver), pkVerifier>), salt), salt, ~code
              ) ▶₀ #b )
-        case OIDCClientCodeRedirect_case_1
+        case OIDCAppCodeRedirect_case_1
         solve( St_OIDCIdP_Code( $IdP.3, $Username.2, ~code, hash.2, nonce.3,
                                 s256(code_verifier.1)
                ) ▶₃ #x.1 )
@@ -1112,7 +1403,7 @@ next
           qed
         qed
       next
-        case OIDCClientCodeRedirect_case_2
+        case OIDCAppCodeRedirect_case_2
         solve( St_OIDCIdP_Code( $IdP.3, $Username.2, ~code, hash.2, nonce.3,
                                 s256(code_verifier.1)
                ) ▶₃ #x.1 )
@@ -1125,20 +1416,7 @@ next
           qed
         qed
       next
-        case OIDCClientCodeRedirect_case_3
-        solve( St_OIDCIdP_Code( $IdP.3, $Username.2, ~code, hash.2, nonce.3,
-                                s256(code_verifier.1)
-               ) ▶₃ #x.1 )
-          case OIDCIdPIssueCode
-          solve( St_OIDCIdP_Code( $IdP.2, $Username.1, ~code, hash.1, nonce.2,
-                                  s256(code_verifier.1)
-                 ) ▶₃ #y )
-            case OIDCIdPIssueCode
-            by contradiction /* cyclic */
-          qed
-        qed
-      next
-        case OIDCClientCodeRedirect_case_4
+        case OIDCAppCodeRedirect_case_3
         solve( St_OIDCIdP_Code( $IdP.3, $Username.2, ~code, hash.2, nonce.3,
                                 s256(code_verifier.1)
                ) ▶₃ #x.1 )
@@ -1157,10 +1435,10 @@ next
     solve( St_OIDCServer_Auth( $IdP, ~sess, hash, nonce, code_challenge
            ) ▶₀ #a )
       case OIDCIdPInit
-      solve( St_OIDCClient_CodeReq( $Initiator, $IdP.1, ~sessPost,
-                                    h(<trim(pk(skInitiator)), trim(pkVerifier)>, salt), salt, ~code
+      solve( St_OIDCApp_CodeReq( $Prover, $IdP.1, ~sessPost,
+                                 h(fingerprint(<pk(skProver), pkVerifier>), salt), salt, ~code
              ) ▶₀ #b )
-        case OIDCClientCodeRedirect_case_1
+        case OIDCAppCodeRedirect_case_1
         solve( St_OIDCIdP_Code( $IdP.3, $Username.2, ~code, hash.2, nonce.3,
                                 s256(code_verifier.1)
                ) ▶₃ #x.1 )
@@ -1173,7 +1451,7 @@ next
           qed
         qed
       next
-        case OIDCClientCodeRedirect_case_2
+        case OIDCAppCodeRedirect_case_2
         solve( St_OIDCIdP_Code( $IdP.3, $Username.2, ~code, hash.2, nonce.3,
                                 s256(code_verifier.1)
                ) ▶₃ #x.1 )
@@ -1186,20 +1464,7 @@ next
           qed
         qed
       next
-        case OIDCClientCodeRedirect_case_3
-        solve( St_OIDCIdP_Code( $IdP.3, $Username.2, ~code, hash.2, nonce.3,
-                                s256(code_verifier.1)
-               ) ▶₃ #x.1 )
-          case OIDCIdPIssueCode
-          solve( St_OIDCIdP_Code( $IdP.2, $Username.1, ~code, hash.1, nonce.2,
-                                  s256(code_verifier.1)
-                 ) ▶₃ #y )
-            case OIDCIdPIssueCode
-            by contradiction /* cyclic */
-          qed
-        qed
-      next
-        case OIDCClientCodeRedirect_case_4
+        case OIDCAppCodeRedirect_case_3
         solve( St_OIDCIdP_Code( $IdP.3, $Username.2, ~code, hash.2, nonce.3,
                                 s256(code_verifier.1)
                ) ▶₃ #x.1 )
@@ -1218,51 +1483,50 @@ qed
 
 rule (modulo E) OIDCTokenReceive:
    [
-   !SignalLtkClient( $Verifier, skVerifier ),
+   !SignalLtkApp( $Verifier, skVerifier ),
    In( signalMsg(skSender, pk(skVerifier),
                  <'fwd_token', <<IdP, username, nonce, hash>, signature>, salt>)
    ),
-   !Domain( IdP, ~IdPKey ), Fr( ~sess )
+   !Domain( IdP, ~IdPKey )
    ]
   -->
    [
-   St_OIDCVerifier( $Verifier, ~sess, pk(skSender), skVerifier,
+   St_OIDCVerifier( $Verifier, pk(skSender), skVerifier,
                     <<IdP, username, nonce, hash>, signature>, salt
-   ),
-   Out( tlsClientMsg(~sess, cert(~IdPKey), 'pk_req') )
+   )
    ]
 
   /* has exactly the trivial AC variant */
 
 rule (modulo E) OIDCTokenVerify:
    [
-   St_OIDCVerifier( $Verifier, ~sess, pkInitiator, skVerifier,
+   St_OIDCVerifier( $Verifier, pkProver, skVerifier,
                     <<IdP, username, nonce, hash>, signature>, salt
    ),
    !Domain( IdP, ~IdPKey ),
-   In( tlsServerMsg(~sess, ~IdPKey, <'pk_response', pkIdP>) )
+   In( tlsServerMsg(~sess, ~IdPKey, <'idp_pk_response', pkIdP>) )
    ]
   --[
-  Eq( h(<trim(pkInitiator), trim(pk(skVerifier))>, salt), hash ),
+  Eq( h(fingerprint(<pkProver, pk(skVerifier)>), salt), hash ),
   Eq( verify(signature, <IdP, username, nonce, hash>, pkIdP), true ),
   DidNotIssueSelf( $Verifier, nonce ),
-  AssociateAs( pkInitiator, IdP, username, pk(skVerifier) )
+  AssociateAs( pkProver, IdP, username, pk(skVerifier) )
   ]->
    [ ]
 
   /*
   rule (modulo AC) OIDCTokenVerify:
      [
-     St_OIDCVerifier( $Verifier, ~sess, pkInitiator, skVerifier,
+     St_OIDCVerifier( $Verifier, pkProver, skVerifier,
                       <<IdP, username, nonce, hash>, signature>, salt
      ),
      !Domain( IdP, ~IdPKey ),
-     In( tlsServerMsg(~sess, ~IdPKey, <'pk_response', pkIdP>) )
+     In( tlsServerMsg(~sess, ~IdPKey, <'idp_pk_response', pkIdP>) )
      ]
     --[
-    Eq( h(<trim(pkInitiator), trim(pk(skVerifier))>, salt), hash ),
+    Eq( h(fingerprint(<pkProver, pk(skVerifier)>), salt), hash ),
     Eq( z, true ), DidNotIssueSelf( $Verifier, nonce ),
-    AssociateAs( pkInitiator, IdP, username, pk(skVerifier) )
+    AssociateAs( pkProver, IdP, username, pk(skVerifier) )
     ]->
      [ ]
     variants (modulo AC)
@@ -1298,47 +1562,47 @@ restriction Equality:
   "∀ x y #i. (Eq( x, y ) @ #i) ⇒ (x = y)"
   // safety formula
 
-lemma NonInjectiveAgreement:
+lemma SocialAuthentication:
   all-traces
-  "∀ pkI idp username pkV initiator accountHolder pw skI #i #j #k.
+  "∀ pkI idp username pkV prover accountHolder pw skI #i #j #k.
     ((((AssociateAs( pkI, idp, username, pkV ) @ #i) ∧
-       (ClaimSignalKey( initiator, skI ) @ #j)) ∧
+       (ClaimSignalKey( prover, skI ) @ #j)) ∧
       (pkI = pk(skI))) ∧
      (ClaimUsername( accountHolder, idp, username, pw ) @ #k)) ⇒
     ((((∃ salt hash nonce code_challenge sess #k.1 #l #m.
-         ((((((initiator = accountHolder) ∧
-              (OIDCRequest( initiator, idp, pkV, salt, hash, nonce, code_challenge
+         ((((((prover = accountHolder) ∧
+              (OIDCRequest( prover, idp, pkV, salt, hash, nonce, code_challenge
                ) @ #k.1)) ∧
              (#k.1 < #i)) ∧
             (AuthenticationRequest( sess, idp, hash, nonce, code_challenge ) @ #l)) ∧
            (#l < #i)) ∧
-          (AuthenticationResponse( sess, initiator, idp, username ) @ #m)) ∧
+          (AuthenticationResponse( sess, prover, idp, username ) @ #m)) ∧
          (#m < #i)) ∨
        (∃ domain #k.1. CompromisedDomain( idp, domain ) @ #k.1)) ∨
-      (∃ signalClient domain #k.1 #l.
-        (IsSignalClientFor( idp, signalClient ) @ #k.1) ∧
-        (CompromisedDomain( signalClient, domain ) @ #l))) ∨
+      (∃ signalApp domain #k.1 #l.
+        (IsSignalAppFor( idp, signalApp ) @ #k.1) ∧
+        (CompromisedDomain( signalApp, domain ) @ #l))) ∨
      (∃ party #k.1. CompromisedAccount( party, idp, username ) @ #k.1))"
 /*
 guarded formula characterizing all counter-examples:
-"∃ pkI idp username pkV initiator accountHolder pw skI #i #j #k.
+"∃ pkI idp username pkV prover accountHolder pw skI #i #j #k.
   (AssociateAs( pkI, idp, username, pkV ) @ #i) ∧
-  (ClaimSignalKey( initiator, skI ) @ #j) ∧
+  (ClaimSignalKey( prover, skI ) @ #j) ∧
   (pkI = pk(skI)) ∧
   (ClaimUsername( accountHolder, idp, username, pw ) @ #k)
  ∧
   (∀ salt hash nonce code_challenge sess #k.1 #l #m.
-    (initiator = accountHolder) ∧
-    (OIDCRequest( initiator, idp, pkV, salt, hash, nonce, code_challenge
+    (prover = accountHolder) ∧
+    (OIDCRequest( prover, idp, pkV, salt, hash, nonce, code_challenge
      ) @ #k.1) ∧
     (AuthenticationRequest( sess, idp, hash, nonce, code_challenge ) @ #l) ∧
-    (AuthenticationResponse( sess, initiator, idp, username ) @ #m)
+    (AuthenticationResponse( sess, prover, idp, username ) @ #m)
    ⇒
     ((¬(#k.1 < #i)) ∨ (¬(#l < #i)) ∨ (¬(#m < #i)))) ∧
   (∀ domain #k.1. (CompromisedDomain( idp, domain ) @ #k.1) ⇒ ⊥) ∧
-  (∀ signalClient domain #k.1 #l.
-    (IsSignalClientFor( idp, signalClient ) @ #k.1) ∧
-    (CompromisedDomain( signalClient, domain ) @ #l)
+  (∀ signalApp domain #k.1 #l.
+    (IsSignalAppFor( idp, signalApp ) @ #k.1) ∧
+    (CompromisedDomain( signalApp, domain ) @ #l)
    ⇒
     ⊥) ∧
   (∀ party #k.1. (CompromisedAccount( party, idp, username ) @ #k.1) ⇒ ⊥)"
@@ -1347,125 +1611,45 @@ by sorry
 
 lemma Executability:
   exists-trace
-  "∃ initiator initiatorNum initiatorSk verifier verifierNum verifierSk idp
-     salt hash nonce code_verifier session username pw code token idpSk body
-     signature fingerprint #a #b #c #d #e #f #g #h #i #j #k #l #m #n #o #p #q
-     #r #s #t.
-    (((((((((((((((((((((((((((((((((((((((ClaimNumber( initiator,
-                                                        initiatorNum
-                                           ) @ #a) ∧
-                                          (SignalKeyClient( initiator, initiatorSk ) @ #b)) ∧
-                                         (SignalKeyServer( initiatorNum, pk(initiatorSk) ) @ #c)) ∧
-                                        (ClaimSignalKey( initiator, initiatorSk ) @ #d)) ∧
-                                       (¬(∃ #x. CompromisedSignal( initiator, initiatorSk ) @ #x))) ∧
-                                      (ClaimNumber( verifier, verifierNum ) @ #e)) ∧
-                                     (SignalKeyClient( verifier, verifierSk ) @ #f)) ∧
-                                    (SignalKeyServer( verifierNum, pk(verifierSk) ) @ #g)) ∧
-                                   (ClaimSignalKey( verifier, verifierSk ) @ #h)) ∧
-                                  (¬(∃ #x. CompromisedSignal( verifier, verifierSk ) @ #x))) ∧
-                                 (UsernameClient( initiator, idp, username, pw ) @ #i)) ∧
-                                (UsernameServer( idp, username, pw ) @ #j)) ∧
-                               (ClaimUsername( initiator, idp, username, pw ) @ #k)) ∧
-                              (¬(∃ #x. CompromisedAccount( initiator, idp, username ) @ #x))) ∧
-                             (OIDCRequest( initiator, idp, pk(verifierSk), salt, hash, nonce,
-                                           s256(code_verifier)
-                              ) @ #l)) ∧
-                            (¬(∃ a.1 b.1 c.1 d.1 e.1 f.1 g.1 #x.
-                                (OIDCRequest( a.1, b.1, c.1, d.1, e.1, f.1, g.1 ) @ #x) ∧
-                                (¬(#l = #x))))) ∧
-                           (¬(∃ #x. AdversaryOIDCRequest( ) @ #x))) ∧
-                          (AuthenticationRequest( session, idp, hash, nonce, s256(code_verifier)
-                           ) @ #m)) ∧
-                         (¬(∃ a.1 b.1 c.1 d.1 e.1 #x.
-                             (AuthenticationRequest( a.1, b.1, c.1, d.1, e.1 ) @ #x) ∧
-                             (¬(#m = #x))))) ∧
-                        (AuthenticationResponse( session, initiator, idp, username ) @ #n)) ∧
-                       (¬(∃ a.1 b.1 c.1 d.1 #x.
-                           (AuthenticationResponse( a.1, b.1, c.1, d.1 ) @ #x) ∧ (¬(#n = #x))))) ∧
-                      (IdPIssueCode( idp, username, code ) @ #o)) ∧
-                     (¬(∃ a.1 b.1 c.1 #x.
-                         (IdPIssueCode( a.1, b.1, c.1 ) @ #x) ∧ (¬(#o = #x))))) ∧
-                    (ClientReceiveCode( initiator, idp, code ) @ #p)) ∧
-                   (¬(∃ a.1 b.1 c.1 #x.
-                       (ClientReceiveCode( a.1, b.1, c.1 ) @ #x) ∧ (¬(#p = #x))))) ∧
-                  (IdPIssueToken( token ) @ #q)) ∧
-                 (¬(∃ a.1 #x. (IdPIssueToken( a.1 ) @ #x) ∧ (¬(#q = #x))))) ∧
-                (ClaimIdPKey( idp, idpSk ) @ #r)) ∧
-               (¬(∃ sk #x. CompromisedDomain( idp, sk ) @ #x))) ∧
-              (token = <body, signature>)) ∧
-             (body = <idp, username, nonce, hash>)) ∧
-            (hash = h(fingerprint, salt))) ∧
-           (fingerprint = <trim(pk(initiatorSk)), trim(pk(verifierSk))>)) ∧
-          (signature = sign(body, idpSk))) ∧
-         (Forward( initiator, token ) @ #s)) ∧
-        (¬(∃ a.1 b.1 #x. (Forward( a.1, b.1 ) @ #x) ∧ (¬(#s = #x))))) ∧
-       (AssociateAs( pk(initiatorSk), idp, username, pk(verifierSk) ) @ #t)) ∧
-      (¬(∃ a.1 b.1 c.1 d.1 #x.
-          (AssociateAs( a.1, b.1, c.1, d.1 ) @ #x) ∧ (¬(#t = #x))))) ∧
-     (¬(∃ signal sk #x #y.
-         (IsSignal( signal ) @ #x) ∧ (CompromisedDomain( signal, sk ) @ #y)))) ∧
-    (¬(∃ client sk #x #y.
-        (IsSignalClientFor( idp, client ) @ #x) ∧
-        (CompromisedDomain( client, sk ) @ #y)))"
+  "∃ pkI idp username pkV prover skI accountHolder pw salt hash nonce
+     code_challenge sess #i #j #k #l #m #n.
+    ((((((((((((((AssociateAs( pkI, idp, username, pkV ) @ #i) ∧
+                 (ClaimSignalKey( prover, skI ) @ #j)) ∧
+                (pkI = pk(skI))) ∧
+               (ClaimUsername( accountHolder, idp, username, pw ) @ #k)) ∧
+              (prover = accountHolder)) ∧
+             (OIDCRequest( prover, idp, pkV, salt, hash, nonce, code_challenge
+              ) @ #l)) ∧
+            (#l < #i)) ∧
+           (AuthenticationRequest( sess, idp, hash, nonce, code_challenge ) @ #m)) ∧
+          (#m < #i)) ∧
+         (AuthenticationResponse( sess, prover, idp, username ) @ #n)) ∧
+        (#n < #i)) ∧
+       (¬(∃ d s #x. CompromisedDomain( d, s ) @ #x))) ∧
+      (¬(∃ u s #x. CompromisedSignal( u, s ) @ #x))) ∧
+     (¬(∃ u idp.1 n.1 #x. CompromisedAccount( u, idp.1, n.1 ) @ #x))) ∧
+    (¬(∃ #x. AdversaryLinkClick( ) @ #x))"
 /*
 guarded formula characterizing all satisfying traces:
-"∃ initiator initiatorNum initiatorSk verifier verifierNum verifierSk idp
-   salt hash nonce code_verifier session username pw code token idpSk body
-   signature fingerprint #a #b #c #d #e #f #g #h #i #j #k #l #m #n #o #p #q
-   #r #s #t.
-  (ClaimNumber( initiator, initiatorNum ) @ #a) ∧
-  (SignalKeyClient( initiator, initiatorSk ) @ #b) ∧
-  (SignalKeyServer( initiatorNum, pk(initiatorSk) ) @ #c) ∧
-  (ClaimSignalKey( initiator, initiatorSk ) @ #d) ∧
-  (ClaimNumber( verifier, verifierNum ) @ #e) ∧
-  (SignalKeyClient( verifier, verifierSk ) @ #f) ∧
-  (SignalKeyServer( verifierNum, pk(verifierSk) ) @ #g) ∧
-  (ClaimSignalKey( verifier, verifierSk ) @ #h) ∧
-  (UsernameClient( initiator, idp, username, pw ) @ #i) ∧
-  (UsernameServer( idp, username, pw ) @ #j) ∧
-  (ClaimUsername( initiator, idp, username, pw ) @ #k) ∧
-  (OIDCRequest( initiator, idp, pk(verifierSk), salt, hash, nonce,
-                s256(code_verifier)
+"∃ pkI idp username pkV prover skI accountHolder pw salt hash nonce
+   code_challenge sess #i #j #k #l #m #n.
+  (AssociateAs( pkI, idp, username, pkV ) @ #i) ∧
+  (ClaimSignalKey( prover, skI ) @ #j) ∧
+  (pkI = pk(skI)) ∧
+  (ClaimUsername( accountHolder, idp, username, pw ) @ #k) ∧
+  (prover = accountHolder) ∧
+  (OIDCRequest( prover, idp, pkV, salt, hash, nonce, code_challenge
    ) @ #l) ∧
-  (AuthenticationRequest( session, idp, hash, nonce, s256(code_verifier)
-   ) @ #m) ∧
-  (AuthenticationResponse( session, initiator, idp, username ) @ #n) ∧
-  (IdPIssueCode( idp, username, code ) @ #o) ∧
-  (ClientReceiveCode( initiator, idp, code ) @ #p) ∧
-  (IdPIssueToken( token ) @ #q) ∧
-  (ClaimIdPKey( idp, idpSk ) @ #r) ∧
-  (token = <body, signature>) ∧
-  (body = <idp, username, nonce, hash>) ∧
-  (hash = h(fingerprint, salt)) ∧
-  (fingerprint = <trim(pk(initiatorSk)), trim(pk(verifierSk))>) ∧
-  (signature = sign(body, idpSk)) ∧
-  (Forward( initiator, token ) @ #s) ∧
-  (AssociateAs( pk(initiatorSk), idp, username, pk(verifierSk) ) @ #t)
+  (AuthenticationRequest( sess, idp, hash, nonce, code_challenge ) @ #m) ∧
+  (AuthenticationResponse( sess, prover, idp, username ) @ #n)
  ∧
-  (∀ #x. (CompromisedSignal( initiator, initiatorSk ) @ #x) ⇒ ⊥) ∧
-  (∀ #x. (CompromisedSignal( verifier, verifierSk ) @ #x) ⇒ ⊥) ∧
-  (∀ #x. (CompromisedAccount( initiator, idp, username ) @ #x) ⇒ ⊥) ∧
-  (∀ a.1 b.1 c.1 d.1 e.1 f.1 g.1 #x.
-    (OIDCRequest( a.1, b.1, c.1, d.1, e.1, f.1, g.1 ) @ #x) ⇒ #l = #x) ∧
-  (∀ #x. (AdversaryOIDCRequest( ) @ #x) ⇒ ⊥) ∧
-  (∀ a.1 b.1 c.1 d.1 e.1 #x.
-    (AuthenticationRequest( a.1, b.1, c.1, d.1, e.1 ) @ #x) ⇒ #m = #x) ∧
-  (∀ a.1 b.1 c.1 d.1 #x.
-    (AuthenticationResponse( a.1, b.1, c.1, d.1 ) @ #x) ⇒ #n = #x) ∧
-  (∀ a.1 b.1 c.1 #x. (IdPIssueCode( a.1, b.1, c.1 ) @ #x) ⇒ #o = #x) ∧
-  (∀ a.1 b.1 c.1 #x. (ClientReceiveCode( a.1, b.1, c.1 ) @ #x) ⇒ #p = #x) ∧
-  (∀ a.1 #x. (IdPIssueToken( a.1 ) @ #x) ⇒ #q = #x) ∧
-  (∀ sk #x. (CompromisedDomain( idp, sk ) @ #x) ⇒ ⊥) ∧
-  (∀ a.1 b.1 #x. (Forward( a.1, b.1 ) @ #x) ⇒ #s = #x) ∧
-  (∀ a.1 b.1 c.1 d.1 #x.
-    (AssociateAs( a.1, b.1, c.1, d.1 ) @ #x) ⇒ #t = #x) ∧
-  (∀ signal sk #x #y.
-    (IsSignal( signal ) @ #x) ∧ (CompromisedDomain( signal, sk ) @ #y) ⇒ ⊥) ∧
-  (∀ client sk #x #y.
-    (IsSignalClientFor( idp, client ) @ #x) ∧
-    (CompromisedDomain( client, sk ) @ #y)
-   ⇒
-    ⊥)"
+  (#l < #i) ∧
+  (#m < #i) ∧
+  (#n < #i) ∧
+  (∀ d s #x. (CompromisedDomain( d, s ) @ #x) ⇒ ⊥) ∧
+  (∀ u s #x. (CompromisedSignal( u, s ) @ #x) ⇒ ⊥) ∧
+  (∀ u idp.1 n.1 #x. (CompromisedAccount( u, idp.1, n.1 ) @ #x) ⇒ ⊥) ∧
+  (∀ #x. (AdversaryLinkClick( ) @ #x) ⇒ ⊥)"
 */
 by sorry
 
