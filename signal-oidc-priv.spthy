@@ -13,15 +13,18 @@ rule Account:
 // OpenID Connect Auth code + PKCE flow
 rule OIDCAppInit:
   let fp = fingerprint(<pk(skProver), pk(skVerifier)>)
-      hash = h(fp, salt)
+      fpDiff= fingerprint(<pk(skDiffProver), pk(skDiffVerifier)>)
+      hash = h(diff(fp, fpDiff), salt)
       code_challenge = s256(code_verifier)
   in
   [ !SignalLtk($Prover, skProver)
+  , !SignalLtk($DiffProver, skDiffProver)
   , !Account($Prover, $PW)
-  , !SignalLtk(numVerifier, pk(skVerifier))
-  , Fr(salt), Fr(nonce), Fr(code_verifier), Fr(~rand) ]
+  , !SignalLtk($Verifier, pk(skVerifier))
+  , !SignalLtk($DiffVerifier, pk(skDiffVerifier))
+  , Fr(salt), Fr(nonce), Fr(code_verifier) ]
   -->
-  [ Out(<'oidc_req', diff(hash, ~rand), nonce, code_challenge>)
+  [ Out(<'oidc_req', hash, nonce, code_challenge>)
   , SessionStore($Prover, nonce, code_verifier) ]
 
 rule OIDCAppLogin:

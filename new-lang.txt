@@ -1,0 +1,48 @@
+channel TLS:
+  send(session, cert(~key)) -> receive(session, ~key)
+  send(session, ~key) -> receive(session, cert(~key))
+
+setup:
+  generate signalTlsKey
+  global SignalKey(signalTlsKey)
+  let certificate := cert(signalTlsKey)
+  publish certificate
+  global SignalCertificate(certificate)
+
+setup for User:
+  public number
+  global PhoneNumber(User, number)
+
+session SignalRegisterClient as User:
+  generate secretKey
+  generate tlsSession
+  lookup PhoneNumber(User, read number)
+  lookup SignalCertificate(certificate)
+
+  send <'signal_req', number, pk(secretKey)> over TLS(tlsSession, certificate)
+  receive <'otp', challenge> over SMS(number)
+  send <'otp_respond', challenge> over TLS(tlsSession, certificate)
+  receive 'ack' over TLS(tlsSession, certificate)
+  global SignalKeyLocal(User, secretKey)
+  event SignalKeyLocal(User, secretKey)
+
+restriction SignalKeyLocalOnce:
+  "All user key1 key2 #t1 #t2.
+    SignalKeyLocal(user, key1) @ #t1 & SignalKeyLocal(user, key2) @ #t2
+    ==> #t1 = #t2"
+
+session SignalRegisterServer:
+  lookup SignalKey(read tlsKey)
+  let serverCert := cert(tlsKey)
+  receive <'signal_req', number, publicKey> over TLS(read tlsSession, serverCert)
+
+  generate challenge
+  send <'otp', challenge> over SMS(number)
+  receive <'otp_respond', challenge> over TLS(tlsSession, serverCert)
+  send 'ack' over TLS(tlsSession, tlsKey)
+  global SignalKeyServer(number, publicKey)
+
+restriction SignalKeyLocalOnce:
+  "All user key1 key2 #t1 #t2.
+    SignalKeyLocal(user, key1) @ #t1 & SignalKeyLocal(user, key2) @ #t2
+    ==> #t1 = #t2"
