@@ -149,8 +149,12 @@ elif argv[1] == 'Executability':
     return matchAgainstList(deferList, lines)
 
   match = defer([
+    re.compile('!KU\( tls'),
+    re.compile('!KU\( browser'),
     re.compile('!KU\( [^~]'),
     re.compile('^!'),
+    '∃',
+    '∀',
     'GenBrowserSession(',
     'Browser(',
     'SessionStore(',
