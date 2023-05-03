@@ -12,6 +12,8 @@ Afterwards, you can navigate to either the root folder or `/proofs` and run Tama
 tamarin-prover interactive .
 ```
 
+If you want to inspect the model for privacy, you must additionally provide the `--diff` argument to Tamarin.
+
 Tamarin should then run on `localhost:3001`.
 If you navigate to that page, you should see a table showing one entry for every `*.spthy` file in the folder.
 Loading one of these files will also load the proofs.
