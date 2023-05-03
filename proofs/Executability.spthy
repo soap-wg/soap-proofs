@@ -1,0 +1,1883 @@
+theory SignalOIDC begin
+
+// Function signature and definition of the equational theory E
+
+functions: browserLaunch/3, cert/1, extract/1, fingerprint/1,
+           forwardReceive/2, fst/1, h/2, pair/2, pk/1, s256/1, sign/2,
+           signalMsg/3, signalRead/2, snd/1, tlsClientMsg/3,
+           tlsClientReceive/2, tlsServerMsg/3, tlsServerReceive/2, true/0,
+           verify/3
+equations:
+    extract(fingerprint(x)) = x,
+    forwardReceive(browserLaunch(~sess, cert(~domain), m), ~domain)
+  = ~sess,
+    forwardReceive(browserLaunch(~sess, cert(~domain), m), ~domain)
+  = m,
+    fst(<x.1, x.2>) = x.1,
+    signalRead(signalMsg(~senderSk, pk(~receiverSk), m), ~receiverSk)
+  = m,
+    snd(<x.1, x.2>) = x.2,
+    tlsClientReceive(tlsServerMsg(~sess, ~domain, m), ~sess) = m,
+    tlsServerReceive(tlsClientMsg(~sess, cert(~domain), m), ~domain)
+  = ~sess,
+    tlsServerReceive(tlsClientMsg(~sess, cert(~domain), m), ~domain)
+  = m,
+    verify(sign(x.1, x.2), x.1, pk(x.2)) = true
+
+heuristic: o "./oracle.py"
+
+rule (modulo E) Phone:
+   [ ] --[ ClaimNumber( $A, $Number ) ]-> [ !Phone( $A, $Number ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) TLSSetup:
+   [ Fr( ~domain ) ]
+  --[ OnlyOneDomain( $A ) ]->
+   [ !Domain( $A, ~domain ), Out( cert(~domain) ) ]
+
+  /* has exactly the trivial AC variant */
+
+restriction OnlyOneDomain:
+  "∀ domain #x #y.
+    ((OnlyOneDomain( domain ) @ #x) ∧ (OnlyOneDomain( domain ) @ #y)) ⇒
+    (#x = #y)"
+  // safety formula
+
+rule (modulo E) DomainCompromise:
+   [ !Domain( $A, ~domain ) ]
+  --[ CompromisedDomain( $A, ~domain ) ]->
+   [ Out( ~domain ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) SignalServer:
+   [ !Domain( $Signal, ~domain ) ]
+  --[ OnlyOnceSignal( ), IsSignal( $Signal ) ]->
+   [ !SignalDomain( ~domain ) ]
+
+  /* has exactly the trivial AC variant */
+
+restriction OnlyOnceSignal:
+  "∀ #i #j.
+    ((OnlyOnceSignal( ) @ #i) ∧ (OnlyOnceSignal( ) @ #j)) ⇒ (#i = #j)"
+  // safety formula
+
+rule (modulo E) SignalApp:
+   [ !Domain( $IdP, ~secret ), !Domain( $SignalApp, ~domain ) ]
+  --[
+  OnlyOnceSignalAppIdP( $IdP ), OnlyOnceSignalApp( $SignalApp ),
+  IsSignalAppFor( $IdP, $SignalApp )
+  ]->
+   [ !SignalAppDomain( $IdP, ~domain ) ]
+
+  /* has exactly the trivial AC variant */
+
+restriction OnlyOnceSignalAppIdP:
+  "∀ idp #i #j.
+    ((OnlyOnceSignalAppIdP( idp ) @ #i) ∧
+     (OnlyOnceSignalAppIdP( idp ) @ #j)) ⇒
+    (#i = #j)"
+  // safety formula
+
+restriction OnlyOnceSignalApp:
+  "∀ c #i #j.
+    ((OnlyOnceSignalApp( c ) @ #i) ∧ (OnlyOnceSignalApp( c ) @ #j)) ⇒
+    (#i = #j)"
+  // safety formula
+
+rule (modulo E) SignalRegister:
+   [
+   Fr( sk ), Fr( ~sess ), !Phone( $A, $Number ),
+   !SignalDomain( ~signal )
+   ]
+  --[ IsSignalKey( sk ) ]->
+   [
+   Out( tlsClientMsg(~sess, cert(~signal),
+                     <'signal_req', $Number, pk(sk)>)
+   ),
+   Out( pk(sk) ), St_SignalReg_App( $A, ~sess, sk )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) SignalChallenge:
+   [
+   !SignalDomain( ~signal ),
+   In( tlsClientMsg(~sess, cert(~signal),
+                    <'signal_req', $Number, ltk>)
+   ),
+   Fr( challenge )
+   ]
+  --[ OTPChallenge( challenge ) ]->
+   [
+   Out( <'otp', challenge> ),
+   St_SigReg_Server( ~sess, $Number, ltk, challenge )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) SignalRespond:
+   [
+   In( <'otp', challenge> ), !SignalDomain( ~signal ),
+   St_SignalReg_App( $A, ~sess, sk )
+   ]
+  --[ OTPRespond( challenge ) ]->
+   [
+   Out( tlsClientMsg(~sess, cert(~signal), <'otp_respond', challenge>)
+   ),
+   St_SignalReg_AppWait( $A, ~sess, sk )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) SignalAck:
+   [
+   !SignalDomain( ~signal ),
+   In( tlsClientMsg(~sess, cert(~signal), <'otp_respond', challenge>)
+   ),
+   St_SigReg_Server( ~sess, phone, ltk, challenge )
+   ]
+  --[ SignalKeyServer( phone, ltk ) ]->
+   [
+   !SignalLtkServer( phone, ltk ),
+   Out( tlsServerMsg(~sess, ~signal, 'signal_ack') )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+restriction KeysUnique:
+  "∀ phone ltk1 ltk2 #a #b.
+    ((SignalKeyServer( phone, ltk1 ) @ #a) ∧
+     (SignalKeyServer( phone, ltk2 ) @ #b)) ⇒
+    ((#a = #b) ∧ (ltk1 = ltk2))"
+  // safety formula
+
+rule (modulo E) SignalFin:
+   [
+   !SignalDomain( ~signal ), St_SignalReg_AppWait( $A, ~sess, sk ),
+   In( tlsServerMsg(~sess, ~signal, 'signal_ack') )
+   ]
+  --[ ClaimSignalKey( $A, sk ) ]->
+   [ !SignalLtkApp( $A, sk ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) SignalKeyRequest:
+   [
+   Fr( ~sess ), !SignalLtkServer( phone, ltk ),
+   !SignalDomain( ~signal )
+   ]
+  --[ ShareSignalKey( ltk ) ]->
+   [
+   Out( tlsServerMsg(~sess, ~signal,
+                     <'signal_pk_response', phone, ltk>)
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) SignalCompromise:
+   [ !SignalLtkApp( $A, ~sk ) ]
+  --[ CompromisedSignal( $A, ~sk ) ]->
+   [ Out( ~sk ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) IdPSetup:
+   [ Fr( sk ) ]
+  --[ ClaimIdPKey( $IdP, sk ) ]->
+   [ !IdPLtk( $IdP, sk ), Out( pk(sk) ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) IdPPkDistribute:
+   [ Fr( ~sess ), !IdPLtk( $IdP, sk ), !Domain( $IdP, ~IdPKey ) ]
+  -->
+   [ Out( tlsServerMsg(~sess, ~IdPKey, <'idp_pk_response', pk(sk)>) )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) IdPSignUpInit:
+   [ Fr( pw ), Fr( ~sess ), !Domain( $IdP, ~IdPKey ) ]
+  --[ UsernameApp( $A, $IdP, $Username, pw ) ]->
+   [
+   Out( tlsClientMsg(~sess, cert(~IdPKey), <'sign_up', $Username, pw>)
+   ),
+   St_IdPRegistration_App( ~sess, $A, $IdP, $Username, pw )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) IdPSignUpServer:
+   [
+   !Domain( $IdP, ~IdPKey ),
+   In( tlsClientMsg(~sess, cert(~IdPKey), <'sign_up', username, pw>) )
+   ]
+  --[
+  UsernameServer( $IdP, username, pw ),
+  AccountsUnique( $IdP, username )
+  ]->
+   [
+   !IdPAccountServer( $IdP, username, pw ),
+   Out( tlsServerMsg(~sess, ~IdPKey, 'idp_ack') )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+restriction AccountsUnique:
+  "∀ idp u #a #b.
+    ((AccountsUnique( idp, u ) @ #a) ∧
+     (AccountsUnique( idp, u ) @ #b)) ⇒
+    (#a = #b)"
+  // safety formula
+
+rule (modulo E) IdPSignUpFin:
+   [
+   St_IdPRegistration_App( ~sess, $A, $IdP, $Username, pw ),
+   !Domain( $IdP, ~IdPKey ),
+   In( tlsServerMsg(~sess, ~IdPKey, 'idp_ack') )
+   ]
+  --[ ClaimUsername( $A, $IdP, $Username, pw ) ]->
+   [ !IdPAccountApp( $A, $IdP, $Username, pw ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) IdPAccountCompromise:
+   [ !IdPAccountApp( $A, $IdP, $Username, ~pw ) ]
+  --[ CompromisedAccount( $A, $IdP, $Username ) ]->
+   [ Out( ~pw ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) InitSessionStore:
+   [ ]
+  --[ OnlyOnceInitSessionStore( $User ) ]->
+   [ SessionStore( $User, 'null', 'null' ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ClearSessionStore:
+   [ SessionStore( $User, x, y ) ]
+  -->
+   [ SessionStore( $User, 'null', 'null' ) ]
+
+  // loop breaker: [0]
+  /* has exactly the trivial AC variant */
+
+restriction OnlyOnceInitSessionStore:
+  "∀ u #x #y.
+    ((OnlyOnceInitSessionStore( u ) @ #x) ∧
+     (OnlyOnceInitSessionStore( u ) @ #y)) ⇒
+    (#x = #y)"
+  // safety formula
+
+rule (modulo E) LinkClick:
+   [ Fr( ~sess ), In( m ), !Domain( $Party, ~domain ) ]
+  --[
+  GenBrowserSession( $Prover, $Party, ~sess ), AdversaryLinkClick( )
+  ]->
+   [
+   Out( browserLaunch(~sess, cert(~domain), m) ),
+   Browser( $Prover, $Party, ~sess )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) OIDCAppLaunchBrowser:
+   [
+   !Domain( $IdP, ~IdPKey ), !SignalDomain( ~signal ),
+   !SignalLtkApp( $Prover, skProver ),
+   !IdPAccountApp( $Prover, $IdP, username, pw ),
+   In( tlsServerMsg(~sessPk, ~signal,
+                    <'signal_pk_response', phone, pkVerifier>)
+   ),
+   SessionStore( $Prover, drop1, drop2 ), Fr( salt ), Fr( nonce ),
+   Fr( code_verifier ), Fr( ~sess )
+   ]
+  --[
+  OIDCRequest( $Prover, $IdP, pkVerifier, salt,
+               h(fingerprint(<pk(skProver), pkVerifier>), salt), nonce,
+               s256(code_verifier)
+  ),
+  GenNonce( nonce ), GenBrowserSession( $Prover, $IdP, ~sess ),
+  GenerateCodeVerifierFor( code_verifier, $IdP )
+  ]->
+   [
+   Out( browserLaunch(~sess, cert(~IdPKey),
+                      <'oidc_req', h(fingerprint(<pk(skProver), pkVerifier>), salt), 
+                       nonce, s256(code_verifier)>)
+   ),
+   Out( <h(fingerprint(<pk(skProver), pkVerifier>), salt), nonce, 
+         s256(code_verifier)>
+   ),
+   SessionStore( $Prover, nonce,
+                 <$IdP, h(fingerprint(<pk(skProver), pkVerifier>), salt), salt, 
+                  code_verifier>
+   ),
+   Browser( $Prover, $IdP, ~sess )
+   ]
+
+  // loop breaker: [5]
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) OIDCIdPInit:
+   [
+   !Domain( $IdP, ~IdPKey ),
+   In( browserLaunch(~sess, cert(~IdPKey),
+                     <'oidc_req', hash, nonce, code_challenge>)
+   )
+   ]
+  --[
+  AuthenticationRequest( ~sess, $IdP, hash, nonce, code_challenge ),
+  IsNonce( nonce )
+  ]->
+   [
+   Out( tlsServerMsg(~sess, ~IdPKey, 'auth_req') ),
+   St_OIDCServer_Auth( $IdP, ~sess, hash, nonce, code_challenge )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) OIDCAppLogin:
+   [
+   Browser( $Prover, $IdP, ~sess ), !Domain( $IdP, ~IdPKey ),
+   In( tlsServerMsg(~sess, ~IdPKey, 'auth_req') ),
+   !IdPAccountApp( $Prover, $IdP, $Username, pw )
+   ]
+  --[
+  AuthenticationResponse( ~sess, $Prover, $IdP, $Username ),
+  UseBrowserSession( $Prover, $IdP, ~sess )
+  ]->
+   [
+   Out( tlsClientMsg(~sess, cert(~IdPKey), <'login', $Username, pw>)
+   ),
+   Browser( $Prover, $IdP, ~sess )
+   ]
+
+  // loop breaker: [0]
+  /* has exactly the trivial AC variant */
+
+lemma BrowserSessionSources [reuse, use_induction]:
+  all-traces
+  "∀ user domain sess #x.
+    (UseBrowserSession( user, domain, sess ) @ #x) ⇒
+    (∃ user.1 domain.1 #y.
+      (GenBrowserSession( user.1, domain.1, sess ) @ #y) ∧ (#y < #x))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ user domain sess #x.
+  (UseBrowserSession( user, domain, sess ) @ #x)
+ ∧
+  ∀ user.1 domain.1 #y.
+   (GenBrowserSession( user.1, domain.1, sess ) @ #y) ⇒ ¬(#y < #x)"
+*/
+by sorry
+
+lemma BrowserSessionBinding [reuse, use_induction]:
+  all-traces
+  "∀ user1 user2 domain1 domain2 sess #x #y.
+    ((UseBrowserSession( user1, domain1, sess ) @ #x) ∧
+     (GenBrowserSession( user2, domain2, sess ) @ #y)) ⇒
+    ((user1 = user2) ∧ (domain1 = domain2))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ user1 user2 domain1 domain2 sess #x #y.
+  (UseBrowserSession( user1, domain1, sess ) @ #x) ∧
+  (GenBrowserSession( user2, domain2, sess ) @ #y)
+ ∧
+  ((¬(user1 = user2)) ∨ (¬(domain1 = domain2)))"
+*/
+by sorry
+
+lemma BrowserSessionUnique [reuse, use_induction]:
+  all-traces
+  "∀ user1 user2 domain1 domain2 sess #x #y.
+    ((GenBrowserSession( user1, domain1, sess ) @ #x) ∧
+     (GenBrowserSession( user2, domain2, sess ) @ #y)) ⇒
+    (#x = #y)"
+/*
+guarded formula characterizing all counter-examples:
+"∃ user1 user2 domain1 domain2 sess #x #y.
+  (GenBrowserSession( user1, domain1, sess ) @ #x) ∧
+  (GenBrowserSession( user2, domain2, sess ) @ #y)
+ ∧
+  ¬(#x = #y)"
+*/
+by sorry
+
+lemma UsernamesUnique [reuse]:
+  all-traces
+  "∀ userA userB idp username pw1 pw2 #a #b.
+    ((ClaimUsername( userA, idp, username, pw1 ) @ #a) ∧
+     (ClaimUsername( userB, idp, username, pw2 ) @ #b)) ⇒
+    (((#a = #b) ∧ (userA = userB)) ∨
+     (∃ sk #t. CompromisedDomain( idp, sk ) @ #t))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ userA userB idp username pw1 pw2 #a #b.
+  (ClaimUsername( userA, idp, username, pw1 ) @ #a) ∧
+  (ClaimUsername( userB, idp, username, pw2 ) @ #b)
+ ∧
+  (((¬(#a = #b)) ∨ (¬(userA = userB)))) ∧
+  (∀ sk #t. (CompromisedDomain( idp, sk ) @ #t) ⇒ ⊥)"
+*/
+by sorry
+
+lemma UsernamesServerConfirmed [reuse]:
+  all-traces
+  "∀ user idp username pw #t.
+    (ClaimUsername( user, idp, username, pw ) @ #t) ⇒
+    ((∃ #x. UsernameServer( idp, username, pw ) @ #x) ∨
+     (∃ sk #x. CompromisedDomain( idp, sk ) @ #x))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ user idp username pw #t.
+  (ClaimUsername( user, idp, username, pw ) @ #t)
+ ∧
+  (∀ #x. (UsernameServer( idp, username, pw ) @ #x) ⇒ ⊥) ∧
+  (∀ sk #x. (CompromisedDomain( idp, sk ) @ #x) ⇒ ⊥)"
+*/
+by sorry
+
+lemma PasswordsConfidential [reuse]:
+  all-traces
+  "∀ user idp username pw #t.
+    (UsernameApp( user, idp, username, pw ) @ #t) ⇒
+    (((¬(∃ #x. !KU( pw ) @ #x)) ∨
+      (∃ sk #x. CompromisedDomain( idp, sk ) @ #x)) ∨
+     (∃ someone #x. CompromisedAccount( someone, idp, username ) @ #x))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ user idp username pw #t.
+  (UsernameApp( user, idp, username, pw ) @ #t)
+ ∧
+  (∃ #x. (!KU( pw ) @ #x)) ∧
+  (∀ sk #x. (CompromisedDomain( idp, sk ) @ #x) ⇒ ⊥) ∧
+  (∀ someone #x.
+    (CompromisedAccount( someone, idp, username ) @ #x) ⇒ ⊥)"
+*/
+by sorry
+
+lemma SignalKeysUnique [reuse]:
+  all-traces
+  "∀ userA userB sk #a #b.
+    ((ClaimSignalKey( userA, sk ) @ #a) ∧
+     (ClaimSignalKey( userB, sk ) @ #b)) ⇒
+    (((#a = #b) ∧ (userA = userB)) ∨
+     (∃ signal sk.1 #t1 #t2.
+       (CompromisedDomain( signal, sk.1 ) @ #t1) ∧
+       (IsSignal( signal ) @ #t2)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ userA userB sk #a #b.
+  (ClaimSignalKey( userA, sk ) @ #a) ∧
+  (ClaimSignalKey( userB, sk ) @ #b)
+ ∧
+  (((¬(#a = #b)) ∨ (¬(userA = userB)))) ∧
+  (∀ signal sk.1 #t1 #t2.
+    (CompromisedDomain( signal, sk.1 ) @ #t1) ∧
+    (IsSignal( signal ) @ #t2)
+   ⇒
+    ⊥)"
+*/
+by sorry
+
+rule (modulo E) OIDCIdPIssueCode:
+   [
+   St_OIDCServer_Auth( $IdP, ~sess, hash, nonce, code_challenge ),
+   In( tlsClientMsg(~sess, cert(~IdPKey), <'login', $Username, pw>) ),
+   !IdPAccountServer( $IdP, $Username, pw ), !IdPLtk( $IdP, sk ),
+   !Domain( $IdP, ~IdPKey ), !SignalAppDomain( $IdP, ~signalApp ),
+   Fr( ~code )
+   ]
+  --[
+  IdPIssueCode( $IdP, $Username, ~code ), IsPW( pw ),
+  IsNonce( nonce ), GenCode( $IdP, ~code )
+  ]->
+   [
+   Out( browserLaunch(~sess, cert(~signalApp), <'code', ~code, nonce>)
+   ),
+   St_OIDCIdP_Code( $IdP, $Username, ~code, hash, nonce,
+                    code_challenge
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+lemma IsPW [reuse]:
+  all-traces
+  "∀ pw #x.
+    (IsPW( pw ) @ #x) ⇒
+    ((∃ u i un #y. UsernameApp( u, i, un, pw ) @ #y) ∨
+     (∃ #y. !KU( pw ) @ #y))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ pw #x.
+  (IsPW( pw ) @ #x)
+ ∧
+  (∀ u i un #y. (UsernameApp( u, i, un, pw ) @ #y) ⇒ ⊥) ∧
+  (∀ #y. (!KU( pw ) @ #y) ⇒ ⊥)"
+*/
+by sorry
+
+lemma UserAccountRequiresSignUp [reuse]:
+  all-traces
+  "∀ u i un pw #x.
+    (ClaimUsername( u, i, un, pw ) @ #x) ⇒
+    ((∃ #y. UsernameApp( u, i, un, pw ) @ #y) ∨
+     (∃ d #y. CompromisedDomain( i, d ) @ #y))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ u i un pw #x.
+  (ClaimUsername( u, i, un, pw ) @ #x)
+ ∧
+  (∀ #y. (UsernameApp( u, i, un, pw ) @ #y) ⇒ ⊥) ∧
+  (∀ d #y. (CompromisedDomain( i, d ) @ #y) ⇒ ⊥)"
+*/
+by sorry
+
+rule (modulo E) OIDCAppCodeRedirect:
+   [
+   Browser( $Prover, drop, ~sess ),
+   In( browserLaunch(~sess, cert(~signalApp), <'code', code, nonce>)
+   ),
+   !SignalAppDomain( $IdP, ~signalApp ), !Domain( $IdP, ~IdPKey ),
+   SessionStore( $Prover, nonce, <$IdP, hash, salt, code_verifier> ),
+   Fr( ~sessPost )
+   ]
+  --[
+  AppReceiveCode( $Prover, $IdP, code ),
+  SelfIssued( $Prover, nonce ), Neq( nonce, 'null' ), IsCode( code )
+  ]->
+   [
+   Out( tlsClientMsg(~sessPost, cert(~IdPKey),
+                     <'token_req', code, code_verifier>)
+   ),
+   St_OIDCApp_CodeReq( $Prover, $IdP, ~sessPost, hash, salt, code ),
+   SessionStore( $Prover, 'null', 'null' )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) OIDCIdPTokenIssue:
+   [
+   In( tlsClientMsg(~sess, cert(~IdPKey),
+                    <'token_req', code, code_verifier>)
+   ),
+   !Domain( $IdP, ~IdPKey ), !IdPLtk( $IdP, sk ),
+   St_OIDCIdP_Code( $IdP, $Username, code, hash, nonce, code_challenge
+   )
+   ]
+  --[
+  Eq( s256(code_verifier), code_challenge ),
+  IdPIssueToken( <<$IdP, $Username, nonce, hash>, 
+                  sign(<$IdP, $Username, nonce, hash>, sk)>
+  ),
+  IsToken( <<$IdP, $Username, nonce, hash>, 
+            sign(<$IdP, $Username, nonce, hash>, sk)>
+  ),
+  UseCode( code ), UseCodeVerifierFor( code_verifier, $IdP )
+  ]->
+   [
+   Out( tlsServerMsg(~sess, ~IdPKey,
+                     <'token', <$IdP, $Username, nonce, hash>, 
+                      sign(<$IdP, $Username, nonce, hash>, sk)>)
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+lemma CodeVerifierSecrecy [reuse]:
+  all-traces
+  "∀ verifier idp #x #y.
+    ((UseCodeVerifierFor( verifier, idp ) @ #x) ∧
+     (GenerateCodeVerifierFor( verifier, idp ) @ #y)) ⇒
+    ((¬(∃ #z. !KU( verifier ) @ #z)) ∨
+     (∃ domain #z. CompromisedDomain( idp, domain ) @ #z))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ verifier idp #x #y.
+  (UseCodeVerifierFor( verifier, idp ) @ #x) ∧
+  (GenerateCodeVerifierFor( verifier, idp ) @ #y)
+ ∧
+  (∃ #z. (!KU( verifier ) @ #z)) ∧
+  (∀ domain #z. (CompromisedDomain( idp, domain ) @ #z) ⇒ ⊥)"
+*/
+by sorry
+
+restriction Neq:
+  "∀ a b #x. (Neq( a, b ) @ #x) ⇒ (¬(a = b))"
+  // safety formula
+
+lemma TokenFormatAndOTPLearning [sources]:
+  all-traces
+  "((((∀ token #i.
+        (IsToken( token ) @ #i) ⇒
+        (∃ first second user idp nonce hashed sk.
+          ((((((token = <first, second>) ∧
+               (first = <idp, user, nonce, hashed>)) ∧
+              ((∃ #h. (!KU( idp ) @ #h) ∧ (#h < #i)) ∨
+               (∃ sk.1 #h. ClaimIdPKey( idp, sk.1 ) @ #h))) ∧
+             ((∃ #h. (!KU( user ) @ #h) ∧ (#h < #i)) ∨
+              (∃ party pw #h. ClaimUsername( party, idp, user, pw ) @ #h))) ∧
+            ((∃ #h. (!KU( nonce ) @ #h) ∧ (#h < #i)) ∨
+             (∃ #h. GenNonce( nonce ) @ #h))) ∧
+           ((∃ #h. (!KU( hashed ) @ #h) ∧ (#h < #i)) ∨
+            (∃ fp salt. hashed = h(fp, salt)))) ∧
+          (second = sign(first, sk)))) ∧
+      (∀ nonce #i.
+        (IsNonce( nonce ) @ #i) ⇒
+        ((∃ #h. (!KU( nonce ) @ #h) ∧ (#h < #i)) ∨
+         (∃ #h. GenNonce( nonce ) @ #h)))) ∧
+     (∀ code #i.
+       (IsCode( code ) @ #i) ⇒
+       ((∃ #h. (!KU( code ) @ #h) ∧ (#h < #i)) ∨
+        (∃ idp #h. GenCode( idp, code ) @ #h)))) ∧
+    (∀ chall #i.
+      (OTPRespond( chall ) @ #i) ⇒
+      ((∃ #j. (OTPChallenge( chall ) @ #j) ∧ (#j < #i)) ∨
+       (∃ #j. (!KU( chall ) @ #j) ∧ (#j < #i))))) ∧
+   (∀ ltk #i.
+     (ShareSignalKey( ltk ) @ #i) ⇒
+     ((∃ sk #j. (IsSignalKey( sk ) @ #j) ∧ (ltk = pk(sk))) ∨
+      (∃ #j. (!KU( ltk ) @ #j) ∧ (#j < #i))))"
+/*
+guarded formula characterizing all counter-examples:
+"((∃ token #i.
+    (IsToken( token ) @ #i)
+   ∧
+    ∀ first second user idp nonce hashed sk.
+     (token = <first, second>) ∧
+     (first = <idp, user, nonce, hashed>) ∧
+     (second = sign(first, sk))
+    ⇒
+     (((∀ #h. (!KU( idp ) @ #h) ⇒ ¬(#h < #i)) ∧
+       (∀ sk.1 #h. (ClaimIdPKey( idp, sk.1 ) @ #h) ⇒ ⊥)) ∨
+      ((∀ #h. (!KU( user ) @ #h) ⇒ ¬(#h < #i)) ∧
+       (∀ party pw #h.
+         (ClaimUsername( party, idp, user, pw ) @ #h) ⇒ ⊥)) ∨
+      ((∀ #h. (!KU( nonce ) @ #h) ⇒ ¬(#h < #i)) ∧
+       (∀ #h. (GenNonce( nonce ) @ #h) ⇒ ⊥)) ∨
+      ((∀ #h. (!KU( hashed ) @ #h) ⇒ ¬(#h < #i)) ∧
+       (∀ fp salt. (hashed = h(fp, salt)) ⇒ ⊥)))) ∨
+  (∃ nonce #i.
+    (IsNonce( nonce ) @ #i)
+   ∧
+    (∀ #h. (!KU( nonce ) @ #h) ⇒ ¬(#h < #i)) ∧
+    (∀ #h. (GenNonce( nonce ) @ #h) ⇒ ⊥)) ∨
+  (∃ code #i.
+    (IsCode( code ) @ #i)
+   ∧
+    (∀ #h. (!KU( code ) @ #h) ⇒ ¬(#h < #i)) ∧
+    (∀ idp #h. (GenCode( idp, code ) @ #h) ⇒ ⊥)) ∨
+  (∃ chall #i.
+    (OTPRespond( chall ) @ #i)
+   ∧
+    (∀ #j. (OTPChallenge( chall ) @ #j) ⇒ ¬(#j < #i)) ∧
+    (∀ #j. (!KU( chall ) @ #j) ⇒ ¬(#j < #i))) ∨
+  (∃ ltk #i.
+    (ShareSignalKey( ltk ) @ #i)
+   ∧
+    (∀ sk #j. (IsSignalKey( sk ) @ #j) ∧ (ltk = pk(sk)) ⇒ ⊥) ∧
+    (∀ #j. (!KU( ltk ) @ #j) ⇒ ¬(#j < #i))))"
+*/
+by sorry
+
+rule (modulo E) OIDCTokenForward:
+   [
+   St_OIDCApp_CodeReq( $Prover, $IdP, ~sessPost, hash, salt, code ),
+   !Domain( $IdP, ~IdPKey ), !SignalDomain( ~signal ),
+   In( tlsServerMsg(~sess1, ~IdPKey, <'idp_pk_response', pkIdP>) ),
+   In( tlsServerMsg(~sess2, ~signal,
+                    <'signal_pk_response', phone, pkVerifier>)
+   ),
+   In( tlsServerMsg(~sessPost, ~IdPKey,
+                    <'token', <$IdP, username, nonce, hash>, signature>)
+   ),
+   !SignalLtkApp( $Prover, skProver )
+   ]
+  --[
+  Eq( h(fingerprint(<pk(skProver), pkVerifier>), salt), hash ),
+  Eq( verify(signature, <$IdP, username, nonce, hash>, pkIdP), true
+  ),
+  Forward( $Prover, <<$IdP, username, nonce, hash>, signature> ),
+  IsToken( <<$IdP, username, nonce, hash>, signature> ),
+  UsedCode( code )
+  ]->
+   [
+   Out( signalMsg(skProver, pkVerifier,
+                  <'fwd_token', <<$IdP, username, nonce, hash>, signature>, salt>)
+   ),
+   Out( code )
+   ]
+
+  /*
+  rule (modulo AC) OIDCTokenForward:
+     [
+     St_OIDCApp_CodeReq( $Prover, $IdP, ~sessPost, hash, salt, code ),
+     !Domain( $IdP, ~IdPKey ), !SignalDomain( ~signal ),
+     In( tlsServerMsg(~sess1, ~IdPKey, <'idp_pk_response', pkIdP>) ),
+     In( tlsServerMsg(~sess2, ~signal,
+                      <'signal_pk_response', phone, pkVerifier>)
+     ),
+     In( tlsServerMsg(~sessPost, ~IdPKey,
+                      <'token', <$IdP, username, nonce, hash>, signature>)
+     ),
+     !SignalLtkApp( $Prover, skProver )
+     ]
+    --[
+    Eq( h(fingerprint(<pk(skProver), pkVerifier>), salt), hash ),
+    Eq( z, true ),
+    Forward( $Prover, <<$IdP, username, nonce, hash>, signature> ),
+    IsToken( <<$IdP, username, nonce, hash>, signature> ),
+    UsedCode( code )
+    ]->
+     [
+     Out( signalMsg(skProver, pkVerifier,
+                    <'fwd_token', <<$IdP, username, nonce, hash>, signature>, salt>)
+     ),
+     Out( code )
+     ]
+    variants (modulo AC)
+    1. $IdP  = $IdP.40
+       hash  = hash.48
+       nonce = nonce.49
+       pkIdP = pkIdP.51
+       signature
+             = signature.54
+       username
+             = username.56
+       z     = verify(signature.54,
+                      <$IdP.40, username.56, nonce.49, hash.48>, pkIdP.51)
+    
+    2. $IdP  = $IdP.101
+       hash  = hash.109
+       nonce = nonce.110
+       pkIdP = pk(x.200)
+       signature
+             = sign(<$IdP.101, username.117, nonce.110, hash.109>, x.200)
+       username
+             = username.117
+       z     = true
+  */
+
+lemma CodeIsSingleUse [use_induction, reuse]:
+  all-traces
+  "∀ idp code #a #b #x #y.
+    ((((GenCode( idp, code ) @ #a) ∧ (UsedCode( code ) @ #b)) ∧
+      (UseCode( code ) @ #x)) ∧
+     (UseCode( code ) @ #y)) ⇒
+    (((#x = #y) ∨
+      (∃ domain #x.1. CompromisedDomain( idp, domain ) @ #x.1)) ∨
+     (∃ signalApp domain #x.1 #y.1.
+       (IsSignalAppFor( idp, signalApp ) @ #x.1) ∧
+       (CompromisedDomain( signalApp, domain ) @ #y.1)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ idp code #a #b #x #y.
+  (GenCode( idp, code ) @ #a) ∧
+  (UsedCode( code ) @ #b) ∧
+  (UseCode( code ) @ #x) ∧
+  (UseCode( code ) @ #y)
+ ∧
+  (¬(#x = #y)) ∧
+  (∀ domain #x.1. (CompromisedDomain( idp, domain ) @ #x.1) ⇒ ⊥) ∧
+  (∀ signalApp domain #x.1 #y.1.
+    (IsSignalAppFor( idp, signalApp ) @ #x.1) ∧
+    (CompromisedDomain( signalApp, domain ) @ #y.1)
+   ⇒
+    ⊥)"
+*/
+by sorry
+
+rule (modulo E) OIDCTokenReceive:
+   [
+   !SignalLtkApp( $Verifier, skVerifier ),
+   In( signalMsg(skSender, pk(skVerifier),
+                 <'fwd_token', <<IdP, username, nonce, hash>, signature>, salt>)
+   ),
+   !Domain( IdP, ~IdPKey )
+   ]
+  -->
+   [
+   St_OIDCVerifier( $Verifier, pk(skSender), skVerifier,
+                    <<IdP, username, nonce, hash>, signature>, salt
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) OIDCTokenVerify:
+   [
+   St_OIDCVerifier( $Verifier, pkProver, skVerifier,
+                    <<IdP, username, nonce, hash>, signature>, salt
+   ),
+   !Domain( IdP, ~IdPKey ),
+   In( tlsServerMsg(~sess, ~IdPKey, <'idp_pk_response', pkIdP>) )
+   ]
+  --[
+  Eq( h(fingerprint(<pkProver, pk(skVerifier)>), salt), hash ),
+  Eq( verify(signature, <IdP, username, nonce, hash>, pkIdP), true ),
+  DidNotIssueSelf( $Verifier, nonce ),
+  AssociateAs( pkProver, IdP, username, pk(skVerifier) )
+  ]->
+   [ ]
+
+  /*
+  rule (modulo AC) OIDCTokenVerify:
+     [
+     St_OIDCVerifier( $Verifier, pkProver, skVerifier,
+                      <<IdP, username, nonce, hash>, signature>, salt
+     ),
+     !Domain( IdP, ~IdPKey ),
+     In( tlsServerMsg(~sess, ~IdPKey, <'idp_pk_response', pkIdP>) )
+     ]
+    --[
+    Eq( h(fingerprint(<pkProver, pk(skVerifier)>), salt), hash ),
+    Eq( z, true ), DidNotIssueSelf( $Verifier, nonce ),
+    AssociateAs( pkProver, IdP, username, pk(skVerifier) )
+    ]->
+     [ ]
+    variants (modulo AC)
+    1. IdP   = IdP.16
+       hash  = hash.17
+       nonce = nonce.18
+       pkIdP = pkIdP.19
+       signature
+             = signature.22
+       username
+             = username.24
+       z     = verify(signature.22,
+                      <IdP.16, username.24, nonce.18, hash.17>, pkIdP.19)
+    
+    2. IdP   = IdP.22
+       hash  = hash.23
+       nonce = nonce.24
+       pkIdP = pk(x.36)
+       signature
+             = sign(<IdP.22, username.30, nonce.24, hash.23>, x.36)
+       username
+             = username.30
+       z     = true
+  */
+
+restriction CheckNonceReplay:
+  "∀ verifier nonce #t1.
+    (DidNotIssueSelf( verifier, nonce ) @ #t1) ⇒
+    (¬(∃ #t2. SelfIssued( verifier, nonce ) @ #t2))"
+  // safety formula
+
+restriction Equality:
+  "∀ x y #i. (Eq( x, y ) @ #i) ⇒ (x = y)"
+  // safety formula
+
+lemma SocialAuthentication:
+  all-traces
+  "∀ pkI idp username pkV prover accountHolder pw skI #i #j #k.
+    ((((AssociateAs( pkI, idp, username, pkV ) @ #i) ∧
+       (ClaimSignalKey( prover, skI ) @ #j)) ∧
+      (pkI = pk(skI))) ∧
+     (ClaimUsername( accountHolder, idp, username, pw ) @ #k)) ⇒
+    ((((∃ salt hash nonce code_challenge sess #k.1 #l #m.
+         ((((((prover = accountHolder) ∧
+              (OIDCRequest( prover, idp, pkV, salt, hash, nonce, code_challenge
+               ) @ #k.1)) ∧
+             (#k.1 < #i)) ∧
+            (AuthenticationRequest( sess, idp, hash, nonce, code_challenge
+             ) @ #l)) ∧
+           (#l < #i)) ∧
+          (AuthenticationResponse( sess, prover, idp, username ) @ #m)) ∧
+         (#m < #i)) ∨
+       (∃ domain #k.1. CompromisedDomain( idp, domain ) @ #k.1)) ∨
+      (∃ signalApp domain #k.1 #l.
+        (IsSignalAppFor( idp, signalApp ) @ #k.1) ∧
+        (CompromisedDomain( signalApp, domain ) @ #l))) ∨
+     (∃ party #k.1. CompromisedAccount( party, idp, username ) @ #k.1))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ pkI idp username pkV prover accountHolder pw skI #i #j #k.
+  (AssociateAs( pkI, idp, username, pkV ) @ #i) ∧
+  (ClaimSignalKey( prover, skI ) @ #j) ∧
+  (pkI = pk(skI)) ∧
+  (ClaimUsername( accountHolder, idp, username, pw ) @ #k)
+ ∧
+  (∀ salt hash nonce code_challenge sess #k.1 #l #m.
+    (prover = accountHolder) ∧
+    (OIDCRequest( prover, idp, pkV, salt, hash, nonce, code_challenge
+     ) @ #k.1) ∧
+    (AuthenticationRequest( sess, idp, hash, nonce, code_challenge
+     ) @ #l) ∧
+    (AuthenticationResponse( sess, prover, idp, username ) @ #m)
+   ⇒
+    ((¬(#k.1 < #i)) ∨ (¬(#l < #i)) ∨ (¬(#m < #i)))) ∧
+  (∀ domain #k.1. (CompromisedDomain( idp, domain ) @ #k.1) ⇒ ⊥) ∧
+  (∀ signalApp domain #k.1 #l.
+    (IsSignalAppFor( idp, signalApp ) @ #k.1) ∧
+    (CompromisedDomain( signalApp, domain ) @ #l)
+   ⇒
+    ⊥) ∧
+  (∀ party #k.1.
+    (CompromisedAccount( party, idp, username ) @ #k.1) ⇒ ⊥)"
+*/
+by sorry
+
+lemma Executability:
+  exists-trace
+  "∃ pkI idp username pkV prover skI accountHolder pw salt hash nonce
+     code_challenge sess #i #j #k #l #m #n.
+    ((((((((((((((AssociateAs( pkI, idp, username, pkV ) @ #i) ∧
+                 (ClaimSignalKey( prover, skI ) @ #j)) ∧
+                (pkI = pk(skI))) ∧
+               (ClaimUsername( accountHolder, idp, username, pw ) @ #k)) ∧
+              (prover = accountHolder)) ∧
+             (OIDCRequest( prover, idp, pkV, salt, hash, nonce, code_challenge
+              ) @ #l)) ∧
+            (#l < #i)) ∧
+           (AuthenticationRequest( sess, idp, hash, nonce, code_challenge
+            ) @ #m)) ∧
+          (#m < #i)) ∧
+         (AuthenticationResponse( sess, prover, idp, username ) @ #n)) ∧
+        (#n < #i)) ∧
+       (¬(∃ d s #x. CompromisedDomain( d, s ) @ #x))) ∧
+      (¬(∃ u s #x. CompromisedSignal( u, s ) @ #x))) ∧
+     (¬(∃ u idp.1 n.1 #x. CompromisedAccount( u, idp.1, n.1 ) @ #x))) ∧
+    (¬(∃ #x. AdversaryLinkClick( ) @ #x))"
+/*
+guarded formula characterizing all satisfying traces:
+"∃ pkI idp username pkV prover skI accountHolder pw salt hash nonce
+   code_challenge sess #i #j #k #l #m #n.
+  (AssociateAs( pkI, idp, username, pkV ) @ #i) ∧
+  (ClaimSignalKey( prover, skI ) @ #j) ∧
+  (pkI = pk(skI)) ∧
+  (ClaimUsername( accountHolder, idp, username, pw ) @ #k) ∧
+  (prover = accountHolder) ∧
+  (OIDCRequest( prover, idp, pkV, salt, hash, nonce, code_challenge
+   ) @ #l) ∧
+  (AuthenticationRequest( sess, idp, hash, nonce, code_challenge
+   ) @ #m) ∧
+  (AuthenticationResponse( sess, prover, idp, username ) @ #n)
+ ∧
+  (#l < #i) ∧
+  (#m < #i) ∧
+  (#n < #i) ∧
+  (∀ d s #x. (CompromisedDomain( d, s ) @ #x) ⇒ ⊥) ∧
+  (∀ u s #x. (CompromisedSignal( u, s ) @ #x) ⇒ ⊥) ∧
+  (∀ u idp.1 n.1 #x.
+    (CompromisedAccount( u, idp.1, n.1 ) @ #x) ⇒ ⊥) ∧
+  (∀ #x. (AdversaryLinkClick( ) @ #x) ⇒ ⊥)"
+*/
+simplify
+solve( St_OIDCVerifier( $Verifier, pk(skI), skVerifier,
+                        <
+                         <$IdP, $Username, nonce, 
+                          h(fingerprint(<pk(skI), pk(skVerifier)>), salt)>, 
+                         sign(<$IdP, $Username, nonce, 
+                               h(fingerprint(<pk(skI), pk(skVerifier)>), salt)>,
+                              x)
+                        >,
+                        salt
+       ) ▶₀ #i )
+  case OIDCTokenReceive
+  solve( St_SignalReg_AppWait( $A, ~sess.1, skI ) ▶₁ #j )
+    case SignalRespond
+    solve( St_IdPRegistration_App( ~sess.2, $A, $IdP, $Username, pw
+           ) ▶₀ #k )
+      case IdPSignUpInit
+      solve( !KU( tlsServerMsg(~sess, ~IdPKey,
+                               <'idp_pk_response', pk(x)>)
+             ) @ #vk )
+        case IdPPkDistribute
+        solve( !KU( tlsServerMsg(~sess.1, ~signal, 'signal_ack')
+               ) @ #vk.1 )
+          case SignalAck
+          solve( !KU( tlsServerMsg(~sess.2, ~IdPKey.1, 'idp_ack') ) @ #vk.2 )
+            case IdPSignUpServer
+            solve( !KU( tlsServerMsg(~sessPk, ~signal.1,
+                                     <'signal_pk_response', phone, pk(~n.1)>)
+                   ) @ #vk.3 )
+              case SignalKeyRequest
+              solve( !KU( browserLaunch(~sess.4, cert(~IdPKey.3),
+                                        <'oidc_req', 
+                                         h(fingerprint(<pk(skProver), pk(~n.1)>), ~n.4), ~n.5, 
+                                         s256(~n.6)>)
+                     ) @ #vk.4 )
+                case LinkClick
+                by contradiction /* from formulas */
+              next
+                case OIDCAppLaunchBrowser
+                solve( !KU( tlsServerMsg(~sess.3, ~IdPKey.3, 'auth_req')
+                       ) @ #vk.5 )
+                  case OIDCIdPInit
+                  solve( !KU( tlsServerMsg(~sess.4, ~signal, 'signal_ack')
+                         ) @ #vk.7 )
+                    case SignalAck
+                    solve( !KU( tlsClientMsg(~sess.1, cert(~signal),
+                                             <'otp_respond', ~n.10>)
+                           ) @ #vk.14 )
+                      case SignalRespond
+                      solve( !KU( tlsClientMsg(~sess.1, cert(~signal),
+                                               <'signal_req', $Number.3, ltk>)
+                             ) @ #vk.15 )
+                        case SignalRegister
+                        solve( !KU( tlsClientMsg(~sess.2, cert(~IdPKey.1),
+                                                 <'sign_up', username, pw.1>)
+                               ) @ #vk.16 )
+                          case IdPSignUpInit
+                          solve( !KU( tlsClientMsg(~sess.5, cert(~signal),
+                                                   <'otp_respond', ~n.11>)
+                                 ) @ #vk.17 )
+                            case SignalRespond
+                            solve( !KU( tlsClientMsg(~sess.5, cert(~signal),
+                                                     <'signal_req', $Number, pk(~n.1)>)
+                                   ) @ #vk.19 )
+                              case SignalRegister
+                              solve( !KU( tlsServerMsg(~sess.5, ~signal, 'signal_ack')
+                                     ) @ #vk.19 )
+                                case SignalAck
+                                solve( !KU( tlsServerMsg(~sess.6, ~IdPKey.1, 'idp_ack')
+                                       ) @ #vk.20 )
+                                  case IdPSignUpServer
+                                  solve( !KU( tlsClientMsg(~sess.4, cert(~signal),
+                                                           <'otp_respond', ~n.12>)
+                                         ) @ #vk.23 )
+                                    case SignalRespond
+                                    solve( !KU( tlsClientMsg(~sess.5, cert(~signal),
+                                                             <'otp_respond', ~n.12>)
+                                           ) @ #vk.23 )
+                                      case SignalRespond
+                                      solve( !KU( tlsClientMsg(~sess.5, cert(~signal),
+                                                               <'signal_req', $Number.3, ltk>)
+                                             ) @ #vk.24 )
+                                        case SignalRegister
+                                        solve( !KU( tlsClientMsg(~sess.6, cert(~IdPKey.1),
+                                                                 <'sign_up', username, pw.1>)
+                                               ) @ #vk.25 )
+                                          case IdPSignUpInit
+                                          solve( !KU( browserLaunch(~sess.3, cert(~IdPKey.2),
+                                                                    <'oidc_req', hash, nonce.1, 
+                                                                     code_challenge>)
+                                                 ) @ #vk.25 )
+                                            case OIDCAppLaunchBrowser
+                                            solve( !KU( signalMsg(~n, pk(~n.1),
+                                                                  <'fwd_token', 
+                                                                   <
+                                                                    <$IdP, $Username, nonce, 
+                                                                     h(fingerprint(<pk(~n), pk(~n.1)
+                                                                                   >),
+                                                                       salt)
+                                                                    >, 
+                                                                    sign(<$IdP, $Username, nonce, 
+                                                                          h(fingerprint(<pk(~n), 
+                                                                                         pk(~n.1)>),
+                                                                            salt)
+                                                                         >,
+                                                                         ~n.2)
+                                                                   >, 
+                                                                   salt>)
+                                                   ) @ #vk.17 )
+                                              case OIDCTokenForward_case_1
+                                              by contradiction /* from formulas */
+                                            next
+                                              case OIDCTokenForward_case_2
+                                              by sorry
+                                            next
+                                              case OIDCTokenForward_case_3
+                                              solve( !KU( tlsServerMsg(~sess1, ~IdPKey.1,
+                                                                       <'idp_pk_response', pk(~n.3)
+                                                                       >)
+                                                     ) @ #vk.25 )
+                                                case IdPPkDistribute
+                                                solve( !KU( tlsServerMsg(~sess2, ~signal,
+                                                                         <'signal_pk_response', 
+                                                                          phone, pk(~n.1)>)
+                                                       ) @ #vk.26 )
+                                                  case SignalKeyRequest
+                                                  solve( !KU( tlsServerMsg(~sessPost, ~IdPKey,
+                                                                           <'token', 
+                                                                            <$IdP, $Username, 
+                                                                             nonce, 
+                                                                             h(fingerprint(<pk(~n), 
+                                                                                            pk(~n.1)
+                                                                                           >),
+                                                                               ~n.2)
+                                                                            >, 
+                                                                            sign(<$IdP, $Username, 
+                                                                                  nonce, 
+                                                                                  h(fingerprint(<
+                                                                                                 pk(~n), 
+                                                                                                 pk(~n.1)
+                                                                                                >),
+                                                                                    ~n.2)
+                                                                                 >,
+                                                                                 ~n.3)
+                                                                           >)
+                                                         ) @ #vk.27 )
+                                                    case OIDCIdPTokenIssue
+                                                    solve( !KU( tlsServerMsg(~sess.7, ~IdPKey.1,
+                                                                             'auth_req')
+                                                           ) @ #vk.29 )
+                                                      case OIDCIdPInit
+                                                      solve( !KU( tlsServerMsg(~sessPk.1, ~signal,
+                                                                               <
+                                                                                'signal_pk_response', 
+                                                                                phone, pk(~n.1)>)
+                                                             ) @ #vk.30 )
+                                                        case SignalKeyRequest
+                                                        solve( !KU( tlsServerMsg(~sess.9, ~IdPKey.1,
+                                                                                 'idp_ack')
+                                                               ) @ #vk.31 )
+                                                          case IdPSignUpServer
+                                                          solve( !KU( tlsServerMsg(~sess.10,
+                                                                                   ~IdPKey,
+                                                                                   'idp_ack')
+                                                                 ) @ #vk.32 )
+                                                            case IdPSignUpServer
+                                                            solve( !KU( tlsClientMsg(~sess.11,
+                                                                                     cert(~signal),
+                                                                                     <
+                                                                                      'otp_respond', 
+                                                                                      ~n.18>)
+                                                                   ) @ #vk.33 )
+                                                              case SignalRespond
+                                                              solve( !KU( tlsClientMsg(~sess.10,
+                                                                                       cert(~signal),
+                                                                                       <
+                                                                                        'signal_req', 
+                                                                                        $Number.3, 
+                                                                                        pk(~n.1)>)
+                                                                     ) @ #vk.35 )
+                                                                case SignalRegister
+                                                                solve( !KU( tlsClientMsg(~sessPost,
+                                                                                         cert(~IdPKey),
+                                                                                         <
+                                                                                          'token_req', 
+                                                                                          ~code.1, 
+                                                                                          code_verifier
+                                                                                         >)
+                                                                       ) @ #vk.33 )
+                                                                  case OIDCAppCodeRedirect
+                                                                  solve( !KU( tlsClientMsg(~sess.11,
+                                                                                           cert(~IdPKey),
+                                                                                           <
+                                                                                            'login', 
+                                                                                            $Username, 
+                                                                                            ~n.4>)
+                                                                         ) @ #vk.34 )
+                                                                    case OIDCAppLogin
+                                                                    solve( !KU( tlsClientMsg(~sess.12,
+                                                                                             cert(~signal),
+                                                                                             <
+                                                                                              'otp_respond', 
+                                                                                              ~n.19
+                                                                                             >)
+                                                                           ) @ #vk.37 )
+                                                                      case SignalRespond
+                                                                      solve( !KU( tlsClientMsg(~sess.12,
+                                                                                               cert(~signal),
+                                                                                               <
+                                                                                                'signal_req', 
+                                                                                                $Number.3, 
+                                                                                                pk(~n.1)
+                                                                                               >)
+                                                                             ) @ #vk.39 )
+                                                                        case SignalRegister
+                                                                        solve( !KU( tlsClientMsg(~sess.8,
+                                                                                                 cert(~IdPKey.1),
+                                                                                                 <
+                                                                                                  'sign_up', 
+                                                                                                  username, 
+                                                                                                  pw.1
+                                                                                                 >)
+                                                                               ) @ #vk.37 )
+                                                                          case IdPSignUpInit
+                                                                          solve( !KU( tlsClientMsg(~sess.9,
+                                                                                                   cert(~IdPKey),
+                                                                                                   <
+                                                                                                    'sign_up', 
+                                                                                                    username, 
+                                                                                                    pw.1
+                                                                                                   >)
+                                                                                 ) @ #vk.38 )
+                                                                            case IdPSignUpInit
+                                                                            solve( !KU( tlsServerMsg(~sess.10,
+                                                                                                     ~IdPKey,
+                                                                                                     'auth_req')
+                                                                                   ) @ #vk.39 )
+                                                                              case OIDCIdPInit
+                                                                              solve( !KU( browserLaunch(~sess.7,
+                                                                                                        cert(~signalApp),
+                                                                                                        <
+                                                                                                         'code', 
+                                                                                                         ~code, 
+                                                                                                         ~n.17
+                                                                                                        >)
+                                                                                     ) @ #vk.37 )
+                                                                                case LinkClick
+                                                                                by contradiction
+                                                                                   /* from formulas
+                                                                                   */
+                                                                              next
+                                                                                case OIDCIdPIssueCode
+                                                                                solve( !KU( browserLaunch(~sess.7,
+                                                                                                          cert(~IdPKey),
+                                                                                                          <
+                                                                                                           'oidc_req', 
+                                                                                                           h(fingerprint(<
+                                                                                                                          pk(~n), 
+                                                                                                                          pk(~n.1)
+                                                                                                                         >),
+                                                                                                             ~n.3), 
+                                                                                                           ~n.2, 
+                                                                                                           s256(~n.15)
+                                                                                                          >)
+                                                                                       ) @ #vk.37 )
+                                                                                  case LinkClick
+                                                                                  by contradiction
+                                                                                     /*
+                                                                                     from formulas
+                                                                                     */
+                                                                                next
+                                                                                  case OIDCAppLaunchBrowser
+                                                                                  solve( !KU( browserLaunch(~sess.4,
+                                                                                                            cert(~IdPKey),
+                                                                                                            <
+                                                                                                             'oidc_req', 
+                                                                                                             hash, 
+                                                                                                             nonce, 
+                                                                                                             code_challenge
+                                                                                                            >)
+                                                                                         ) @ #vk.38 )
+                                                                                    case OIDCAppLaunchBrowser
+                                                                                    solve( !Domain( $IdP,
+                                                                                                    ~IdPKey
+                                                                                           ) ▶₁ #i )
+                                                                                      case TLSSetup
+                                                                                      solve( !Domain( $IdP,
+                                                                                                      ~IdPKey
+                                                                                             ) ▶₀ #m )
+                                                                                        case TLSSetup
+                                                                                        solve( !Domain( $IdP,
+                                                                                                        ~IdPKey
+                                                                                               ) ▶₁ #n.16 )
+                                                                                          case TLSSetup
+                                                                                          solve( !IdPAccountApp( $A,
+                                                                                                                 $IdP,
+                                                                                                                 $Username,
+                                                                                                                 pw
+                                                                                                 ) ▶₃ #n.16 )
+                                                                                            case IdPSignUpFin
+                                                                                            solve( !KU( tlsServerMsg(~sess.10,
+                                                                                                                     ~IdPKey,
+                                                                                                                     'idp_ack')
+                                                                                                   ) @ #vk.38 )
+                                                                                              case IdPSignUpServer
+                                                                                              solve( !KU( tlsClientMsg(~sess.10,
+                                                                                                                       cert(~IdPKey),
+                                                                                                                       <
+                                                                                                                        'sign_up', 
+                                                                                                                        username, 
+                                                                                                                        pw
+                                                                                                                       >)
+                                                                                                     ) @ #vk.39 )
+                                                                                                case IdPSignUpInit
+                                                                                                solve( !KU( ~n.14
+                                                                                                       ) @ #vk.36 )
+                                                                                                  case OIDCAppLogin
+                                                                                                  by sorry
+                                                                                                next
+                                                                                                  case OIDCIdPIssueCode
+                                                                                                  by sorry
+                                                                                                next
+                                                                                                  case SignalChallenge
+                                                                                                  solve( !KU( ~n.13
+                                                                                                         ) @ #vk.36 )
+                                                                                                    case OIDCAppLogin
+                                                                                                    by sorry
+                                                                                                  next
+                                                                                                    case OIDCIdPIssueCode
+                                                                                                    by sorry
+                                                                                                  next
+                                                                                                    case SignalChallenge
+                                                                                                    solve( !KU( ~n.15
+                                                                                                           ) @ #vk.37 )
+                                                                                                      case OIDCAppLogin
+                                                                                                      by sorry
+                                                                                                    next
+                                                                                                      case OIDCIdPIssueCode
+                                                                                                      by sorry
+                                                                                                    next
+                                                                                                      case SignalChallenge
+                                                                                                      solve( (∃ #y.
+                                                                                                               (UsernameApp( $A,
+                                                                                                                             $IdP,
+                                                                                                                             $Username,
+                                                                                                                             ~n.5
+                                                                                                                ) @ #y))  ∥
+                                                                                                             (∃ d
+                                                                                                                #y.
+                                                                                                               (CompromisedDomain( $IdP,
+                                                                                                                                   d
+                                                                                                                ) @ #y)) )
+                                                                                                        case case_1
+                                                                                                        solve( (∃ #x.
+                                                                                                                 (UsernameServer( $IdP,
+                                                                                                                                  $Username,
+                                                                                                                                  ~n.5
+                                                                                                                  ) @ #x))  ∥
+                                                                                                               (∃ sk
+                                                                                                                  #x.
+                                                                                                                 (CompromisedDomain( $IdP,
+                                                                                                                                     sk
+                                                                                                                  ) @ #x)) )
+                                                                                                          case case_1
+                                                                                                          solve( (∀ #x.
+                                                                                                                   (!KU( ~n.5
+                                                                                                                    ) @ #x)
+                                                                                                                  ⇒
+                                                                                                                   ⊥)  ∥
+                                                                                                                 (∃ sk
+                                                                                                                    #x.
+                                                                                                                   (CompromisedDomain( $IdP,
+                                                                                                                                       sk
+                                                                                                                    ) @ #x))  ∥
+                                                                                                                 (∃ someone
+                                                                                                                    #x.
+                                                                                                                   (CompromisedAccount( someone,
+                                                                                                                                        $IdP,
+                                                                                                                                        $Username
+                                                                                                                    ) @ #x)) )
+                                                                                                            case case_1
+                                                                                                            solve( (∃ #y.
+                                                                                                                     (UsernameApp( $A,
+                                                                                                                                   $IdP,
+                                                                                                                                   $Username.1,
+                                                                                                                                   ~n.7
+                                                                                                                      ) @ #y))  ∥
+                                                                                                                   (∃ d
+                                                                                                                      #y.
+                                                                                                                     (CompromisedDomain( $IdP,
+                                                                                                                                         d
+                                                                                                                      ) @ #y)) )
+                                                                                                              case case_1
+                                                                                                              solve( (∃ #x.
+                                                                                                                       (UsernameServer( $IdP,
+                                                                                                                                        $Username.1,
+                                                                                                                                        ~n.7
+                                                                                                                        ) @ #x))  ∥
+                                                                                                                     (∃ sk
+                                                                                                                        #x.
+                                                                                                                       (CompromisedDomain( $IdP,
+                                                                                                                                           sk
+                                                                                                                        ) @ #x)) )
+                                                                                                                case case_1
+                                                                                                                solve( (∀ #x.
+                                                                                                                         (!KU( ~n.7
+                                                                                                                          ) @ #x)
+                                                                                                                        ⇒
+                                                                                                                         ⊥)  ∥
+                                                                                                                       (∃ sk
+                                                                                                                          #x.
+                                                                                                                         (CompromisedDomain( $IdP,
+                                                                                                                                             sk
+                                                                                                                          ) @ #x))  ∥
+                                                                                                                       (∃ someone
+                                                                                                                          #x.
+                                                                                                                         (CompromisedAccount( someone,
+                                                                                                                                              $IdP,
+                                                                                                                                              $Username.1
+                                                                                                                          ) @ #x)) )
+                                                                                                                  case case_1
+                                                                                                                  solve( (∃ #y.
+                                                                                                                           (UsernameApp( $A,
+                                                                                                                                         $IdP,
+                                                                                                                                         $Username.3,
+                                                                                                                                         ~n.17
+                                                                                                                            ) @ #y))  ∥
+                                                                                                                         (∃ d
+                                                                                                                            #y.
+                                                                                                                           (CompromisedDomain( $IdP,
+                                                                                                                                               d
+                                                                                                                            ) @ #y)) )
+                                                                                                                    case case_1
+                                                                                                                    solve( (∃ #y.
+                                                                                                                             (UsernameApp( $A,
+                                                                                                                                           $IdP,
+                                                                                                                                           $Username.2,
+                                                                                                                                           ~n.11
+                                                                                                                              ) @ #y))  ∥
+                                                                                                                           (∃ d
+                                                                                                                              #y.
+                                                                                                                             (CompromisedDomain( $IdP,
+                                                                                                                                                 d
+                                                                                                                              ) @ #y)) )
+                                                                                                                      case case_1
+                                                                                                                      solve( (∃ #x.
+                                                                                                                               (UsernameServer( $IdP,
+                                                                                                                                                $Username.3,
+                                                                                                                                                ~n.17
+                                                                                                                                ) @ #x))  ∥
+                                                                                                                             (∃ sk
+                                                                                                                                #x.
+                                                                                                                               (CompromisedDomain( $IdP,
+                                                                                                                                                   sk
+                                                                                                                                ) @ #x)) )
+                                                                                                                        case case_1
+                                                                                                                        solve( (∃ #x.
+                                                                                                                                 (UsernameServer( $IdP,
+                                                                                                                                                  $Username.2,
+                                                                                                                                                  ~n.11
+                                                                                                                                  ) @ #x))  ∥
+                                                                                                                               (∃ sk
+                                                                                                                                  #x.
+                                                                                                                                 (CompromisedDomain( $IdP,
+                                                                                                                                                     sk
+                                                                                                                                  ) @ #x)) )
+                                                                                                                          case case_1
+                                                                                                                          solve( (∀ #x.
+                                                                                                                                   (!KU( ~n.17
+                                                                                                                                    ) @ #x)
+                                                                                                                                  ⇒
+                                                                                                                                   ⊥)  ∥
+                                                                                                                                 (∃ sk
+                                                                                                                                    #x.
+                                                                                                                                   (CompromisedDomain( $IdP,
+                                                                                                                                                       sk
+                                                                                                                                    ) @ #x))  ∥
+                                                                                                                                 (∃ someone
+                                                                                                                                    #x.
+                                                                                                                                   (CompromisedAccount( someone,
+                                                                                                                                                        $IdP,
+                                                                                                                                                        $Username.3
+                                                                                                                                    ) @ #x)) )
+                                                                                                                            case case_1
+                                                                                                                            solve( (∀ #x.
+                                                                                                                                     (!KU( ~n.11
+                                                                                                                                      ) @ #x)
+                                                                                                                                    ⇒
+                                                                                                                                     ⊥)  ∥
+                                                                                                                                   (∃ sk
+                                                                                                                                      #x.
+                                                                                                                                     (CompromisedDomain( $IdP,
+                                                                                                                                                         sk
+                                                                                                                                      ) @ #x))  ∥
+                                                                                                                                   (∃ someone
+                                                                                                                                      #x.
+                                                                                                                                     (CompromisedAccount( someone,
+                                                                                                                                                          $IdP,
+                                                                                                                                                          $Username.2
+                                                                                                                                      ) @ #x)) )
+                                                                                                                              case case_1
+                                                                                                                              solve( (∃ u
+                                                                                                                                        i
+                                                                                                                                        un
+                                                                                                                                        #y.
+                                                                                                                                       (UsernameApp( u,
+                                                                                                                                                     i,
+                                                                                                                                                     un,
+                                                                                                                                                     ~n.5
+                                                                                                                                        ) @ #y))  ∥
+                                                                                                                                     (∃ #y.
+                                                                                                                                       (!KU( ~n.5
+                                                                                                                                        ) @ #y)) )
+                                                                                                                                case case_1
+                                                                                                                                solve( (∀ #z.
+                                                                                                                                         (!KU( ~n.12
+                                                                                                                                          ) @ #z)
+                                                                                                                                        ⇒
+                                                                                                                                         ⊥)  ∥
+                                                                                                                                       (∃ domain
+                                                                                                                                          #z.
+                                                                                                                                         (CompromisedDomain( $IdP,
+                                                                                                                                                             domain
+                                                                                                                                          ) @ #z)) )
+                                                                                                                                  case case_1
+                                                                                                                                  solve( GenBrowserSession( $A,
+                                                                                                                                                            $IdP,
+                                                                                                                                                            ~sess.3
+                                                                                                                                         ) @ #l )
+                                                                                                                                    case OIDCAppLaunchBrowser
+                                                                                                                                    solve( GenBrowserSession( $A,
+                                                                                                                                                              $IdP,
+                                                                                                                                                              ~sess.4
+                                                                                                                                           ) @ #y )
+                                                                                                                                      case OIDCAppLaunchBrowser
+                                                                                                                                      solve( Browser( $A,
+                                                                                                                                                      $IdP,
+                                                                                                                                                      ~sess.3
+                                                                                                                                             ) ▶₀ #n.16 )
+                                                                                                                                        case OIDCAppLaunchBrowser
+                                                                                                                                        solve( Browser( $A,
+                                                                                                                                                        $IdP,
+                                                                                                                                                        ~sess.4
+                                                                                                                                               ) ▶₀ #vr.32 )
+                                                                                                                                          case OIDCAppLaunchBrowser
+                                                                                                                                          solve( Browser( $A,
+                                                                                                                                                          $IdP,
+                                                                                                                                                          ~sess.4
+                                                                                                                                                 ) ▶₀ #vr.49 )
+                                                                                                                                            case OIDCAppLaunchBrowser
+                                                                                                                                            solve( SessionStore( $A,
+                                                                                                                                                                 drop1,
+                                                                                                                                                                 drop2
+                                                                                                                                                   ) ▶₅ #l )
+                                                                                                                                              case ClearSessionStore
+                                                                                                                                              by sorry
+                                                                                                                                            next
+                                                                                                                                              case InitSessionStore
+                                                                                                                                              solve( SessionStore( $A,
+                                                                                                                                                                   drop1,
+                                                                                                                                                                   drop2
+                                                                                                                                                     ) ▶₅ #y )
+                                                                                                                                                case ClearSessionStore
+                                                                                                                                                by sorry
+                                                                                                                                              next
+                                                                                                                                                case InitSessionStore
+                                                                                                                                                by sorry
+                                                                                                                                              next
+                                                                                                                                                case OIDCAppCodeRedirect_case_1
+                                                                                                                                                by contradiction
+                                                                                                                                                   /*
+                                                                                                                                                   from formulas
+                                                                                                                                                   */
+                                                                                                                                              next
+                                                                                                                                                case OIDCAppCodeRedirect_case_2
+                                                                                                                                                by sorry
+                                                                                                                                              next
+                                                                                                                                                case OIDCAppCodeRedirect_case_3
+                                                                                                                                                by sorry
+                                                                                                                                              next
+                                                                                                                                                case OIDCAppLaunchBrowser
+                                                                                                                                                by sorry
+                                                                                                                                              qed
+                                                                                                                                            next
+                                                                                                                                              case OIDCAppCodeRedirect_case_1
+                                                                                                                                              by contradiction
+                                                                                                                                                 /*
+                                                                                                                                                 from formulas
+                                                                                                                                                 */
+                                                                                                                                            next
+                                                                                                                                              case OIDCAppCodeRedirect_case_2
+                                                                                                                                              by sorry
+                                                                                                                                            next
+                                                                                                                                              case OIDCAppCodeRedirect_case_3
+                                                                                                                                              by sorry
+                                                                                                                                            next
+                                                                                                                                              case OIDCAppLaunchBrowser
+                                                                                                                                              by sorry
+                                                                                                                                            qed
+                                                                                                                                          next
+                                                                                                                                            case OIDCAppLogin
+                                                                                                                                            by sorry
+                                                                                                                                          qed
+                                                                                                                                        next
+                                                                                                                                          case OIDCAppLogin
+                                                                                                                                          by sorry
+                                                                                                                                        qed
+                                                                                                                                      next
+                                                                                                                                        case OIDCAppLogin
+                                                                                                                                        by sorry
+                                                                                                                                      qed
+                                                                                                                                    qed
+                                                                                                                                  qed
+                                                                                                                                next
+                                                                                                                                  case case_2
+                                                                                                                                  by contradiction
+                                                                                                                                     /*
+                                                                                                                                     from formulas
+                                                                                                                                     */
+                                                                                                                                qed
+                                                                                                                              next
+                                                                                                                                case case_2
+                                                                                                                                by contradiction
+                                                                                                                                   /*
+                                                                                                                                   from formulas
+                                                                                                                                   */
+                                                                                                                              qed
+                                                                                                                            next
+                                                                                                                              case case_2
+                                                                                                                              by contradiction
+                                                                                                                                 /*
+                                                                                                                                 from formulas
+                                                                                                                                 */
+                                                                                                                            next
+                                                                                                                              case case_3
+                                                                                                                              by contradiction
+                                                                                                                                 /*
+                                                                                                                                 from formulas
+                                                                                                                                 */
+                                                                                                                            qed
+                                                                                                                          next
+                                                                                                                            case case_2
+                                                                                                                            by contradiction
+                                                                                                                               /*
+                                                                                                                               from formulas
+                                                                                                                               */
+                                                                                                                          next
+                                                                                                                            case case_3
+                                                                                                                            by contradiction
+                                                                                                                               /*
+                                                                                                                               from formulas
+                                                                                                                               */
+                                                                                                                          qed
+                                                                                                                        next
+                                                                                                                          case case_2
+                                                                                                                          by contradiction
+                                                                                                                             /*
+                                                                                                                             from formulas
+                                                                                                                             */
+                                                                                                                        qed
+                                                                                                                      next
+                                                                                                                        case case_2
+                                                                                                                        by contradiction
+                                                                                                                           /*
+                                                                                                                           from formulas
+                                                                                                                           */
+                                                                                                                      qed
+                                                                                                                    next
+                                                                                                                      case case_2
+                                                                                                                      by contradiction
+                                                                                                                         /*
+                                                                                                                         from formulas
+                                                                                                                         */
+                                                                                                                    qed
+                                                                                                                  next
+                                                                                                                    case case_2
+                                                                                                                    by contradiction
+                                                                                                                       /*
+                                                                                                                       from formulas
+                                                                                                                       */
+                                                                                                                  qed
+                                                                                                                next
+                                                                                                                  case case_2
+                                                                                                                  by contradiction
+                                                                                                                     /*
+                                                                                                                     from formulas
+                                                                                                                     */
+                                                                                                                next
+                                                                                                                  case case_3
+                                                                                                                  by contradiction
+                                                                                                                     /*
+                                                                                                                     from formulas
+                                                                                                                     */
+                                                                                                                qed
+                                                                                                              next
+                                                                                                                case case_2
+                                                                                                                by contradiction
+                                                                                                                   /*
+                                                                                                                   from formulas
+                                                                                                                   */
+                                                                                                              qed
+                                                                                                            next
+                                                                                                              case case_2
+                                                                                                              by contradiction
+                                                                                                                 /*
+                                                                                                                 from formulas
+                                                                                                                 */
+                                                                                                            qed
+                                                                                                          next
+                                                                                                            case case_2
+                                                                                                            by contradiction
+                                                                                                               /*
+                                                                                                               from formulas
+                                                                                                               */
+                                                                                                          next
+                                                                                                            case case_3
+                                                                                                            by contradiction
+                                                                                                               /*
+                                                                                                               from formulas
+                                                                                                               */
+                                                                                                          qed
+                                                                                                        next
+                                                                                                          case case_2
+                                                                                                          by contradiction
+                                                                                                             /*
+                                                                                                             from formulas
+                                                                                                             */
+                                                                                                        qed
+                                                                                                      next
+                                                                                                        case case_2
+                                                                                                        by contradiction
+                                                                                                           /*
+                                                                                                           from formulas
+                                                                                                           */
+                                                                                                      qed
+                                                                                                    qed
+                                                                                                  qed
+                                                                                                qed
+                                                                                              next
+                                                                                                case c_tlsClientMsg
+                                                                                                by sorry
+                                                                                              qed
+                                                                                            next
+                                                                                              case c_tlsServerMsg
+                                                                                              by sorry
+                                                                                            qed
+                                                                                          qed
+                                                                                        qed
+                                                                                      qed
+                                                                                    qed
+                                                                                  next
+                                                                                    case c_browserLaunch
+                                                                                    by sorry
+                                                                                  qed
+                                                                                next
+                                                                                  case c_browserLaunch
+                                                                                  by sorry
+                                                                                qed
+                                                                              next
+                                                                                case c_browserLaunch
+                                                                                by sorry
+                                                                              qed
+                                                                            next
+                                                                              case c_tlsServerMsg
+                                                                              by sorry
+                                                                            qed
+                                                                          next
+                                                                            case c_tlsClientMsg
+                                                                            by sorry
+                                                                          qed
+                                                                        next
+                                                                          case c_tlsClientMsg
+                                                                          by sorry
+                                                                        qed
+                                                                      next
+                                                                        case c_tlsClientMsg
+                                                                        by sorry
+                                                                      qed
+                                                                    next
+                                                                      case c_tlsClientMsg
+                                                                      by sorry
+                                                                    qed
+                                                                  next
+                                                                    case c_tlsClientMsg
+                                                                    by sorry
+                                                                  qed
+                                                                next
+                                                                  case c_tlsClientMsg
+                                                                  by sorry
+                                                                qed
+                                                              next
+                                                                case c_tlsClientMsg
+                                                                by sorry
+                                                              qed
+                                                            next
+                                                              case c_tlsClientMsg
+                                                              by sorry
+                                                            qed
+                                                          next
+                                                            case c_tlsServerMsg
+                                                            by sorry
+                                                          qed
+                                                        next
+                                                          case c_tlsServerMsg
+                                                          by sorry
+                                                        qed
+                                                      next
+                                                        case c_tlsServerMsg
+                                                        by sorry
+                                                      qed
+                                                    next
+                                                      case c_tlsServerMsg
+                                                      by sorry
+                                                    qed
+                                                  next
+                                                    case c_tlsServerMsg
+                                                    by sorry
+                                                  qed
+                                                next
+                                                  case c_tlsServerMsg
+                                                  by sorry
+                                                qed
+                                              next
+                                                case c_tlsServerMsg
+                                                by sorry
+                                              qed
+                                            next
+                                              case c_signalMsg
+                                              by sorry
+                                            qed
+                                          next
+                                            case c_browserLaunch
+                                            by sorry
+                                          qed
+                                        next
+                                          case c_tlsClientMsg
+                                          by sorry
+                                        qed
+                                      next
+                                        case c_tlsClientMsg
+                                        by sorry
+                                      qed
+                                    next
+                                      case c_tlsClientMsg
+                                      by sorry
+                                    qed
+                                  next
+                                    case c_tlsClientMsg
+                                    by sorry
+                                  qed
+                                next
+                                  case c_tlsServerMsg
+                                  by sorry
+                                qed
+                              next
+                                case c_tlsServerMsg
+                                by sorry
+                              qed
+                            next
+                              case c_tlsClientMsg
+                              by sorry
+                            qed
+                          next
+                            case c_tlsClientMsg
+                            by sorry
+                          qed
+                        next
+                          case c_tlsClientMsg
+                          by sorry
+                        qed
+                      next
+                        case c_tlsClientMsg
+                        by sorry
+                      qed
+                    next
+                      case c_tlsClientMsg
+                      by sorry
+                    qed
+                  next
+                    case c_tlsServerMsg
+                    by sorry
+                  qed
+                next
+                  case c_tlsServerMsg
+                  by sorry
+                qed
+              next
+                case c_browserLaunch
+                by sorry
+              qed
+            next
+              case c_tlsServerMsg
+              by sorry
+            qed
+          next
+            case c_tlsServerMsg
+            by sorry
+          qed
+        next
+          case c_tlsServerMsg
+          by sorry
+        qed
+      next
+        case c_tlsServerMsg
+        by sorry
+      qed
+    qed
+  qed
+qed
+
+/* All well-formedness checks were successful. */
+
+end
