@@ -13,18 +13,18 @@ rule IdPCompromise[color=#FF6961]:
 rule IdPKeyRequest[color=#9AD5D8]:
   [ !IdP($IdP), Fr(~sess) ]
   -->
-  [ TLSClient_Out(~sess, $IdP, 'pk_req')
+  [ TLSClient_Out('GET', ~sess, $IdP, 'pk_req')
   , St_IdPKeyReq($IdP, ~sess) ]
 
 rule IdPPkDistribute[color=#9AD5D8]:
-  [ TLSServer_In(~sess, $IdP, 'pk_req')
+  [ TLSServer_In('GET', ~sess, $IdP, 'pk_req')
   , !IdPLtk($IdP, sk) ]
   -->
-  [ TLSServer_Out(~sess, $IdP, <'idp_pk', pk(sk)>) ]
+  [ TLSServer_Out('GET', ~sess, $IdP, <'idp_pk', pk(sk)>) ]
 
 rule IdPKeyObtain[color=#9AD5D8]:
   [ St_IdPKeyReq($IdP, ~sess)
-  , TLSClient_In(~sess, $IdP, <'idp_pk', idpPk>) ]
+  , TLSClient_In('GET', ~sess, $IdP, <'idp_pk', idpPk>) ]
   -->
   [ !UseIdPKey($User, $IdP, idpPk) ]
 
@@ -50,11 +50,11 @@ rule IdPPublishClient:
   , !IdPAccount($A, $IdP, $Username, ~pw) ]
   --[ SendIdP($IdP, $Username, ~m)
     , Sender($A) ]->
-  [ TLSClient_Out(~sess, $IdP, <'publish', $Username, ~pw, ~m>) ]
+  [ TLSClient_Out('GET', ~sess, $IdP, <'publish', $Username, ~pw, ~m>) ]
 
 rule IdPPublishServer:
   [ !IdPAccount(p, $IdP, $Username, ~pw)
-  , TLSServer_In(~sess, $IdP, <'publish', $Username, ~pw, m>) ]
+  , TLSServer_In('GET', ~sess, $IdP, <'publish', $Username, ~pw, m>) ]
   -->
   [ Out(m)
   , !Publish($IdP, $Username, m) ]

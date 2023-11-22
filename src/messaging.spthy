@@ -30,14 +30,14 @@ rule MessagingRegister[color=#FDFD96]:
   , !Phone($A, $Number), !KeyServer($KeyServer) ]
   --[ IsSession(~sess)
     , IsMessagingKey(~sk) ]->
-  [ TLSClient_Out(~sess, $KeyServer, <'msg_signup_req', $Number, pk(~sk)>)
+  [ TLSClient_Out('GET', ~sess, $KeyServer, <'msg_signup_req', $Number, pk(~sk)>)
   , Out(pk(~sk))
   , St_MessagingReg_App($A, $Number, ~sess, ~sk) ]
 
 rule MessagingChallenge[color=#FDFD96]:
   [ Fr(~challenge)
   , !KeyServer($Server)
-  , TLSServer_In(~sess, $Server, <'msg_signup_req', $Number, ltk>) ]
+  , TLSServer_In('GET', ~sess, $Server, <'msg_signup_req', $Number, ltk>) ]
   --[ IsOTP(~challenge) ]->
   [ SMS_Out($Number, ~challenge)
   , St_SigReg_Server(~sess, $Number, ltk, ~challenge) ]
@@ -46,16 +46,16 @@ rule MessagingRespond[color=#FDFD96]:
   [ !KeyServer($Server), St_MessagingReg_App($A, $Number, ~sess, sk)
   , SMS_In($Number, challenge) ]
   --[ MustBeOTP(challenge) ]->
-  [ TLSClient_Out(~sess, $Server, <'otp_respond', challenge>)
+  [ TLSClient_Out('GET', ~sess, $Server, <'otp_respond', challenge>)
   , St_MessagingReg_AppWait($A, $Number, ~sess, sk) ]
 
 rule MessagingAck[color=#FDFD96]:
   [ !KeyServer($Server)
   , St_SigReg_Server(~sess, $Number, ltk, challenge)
-  , TLSServer_In(~sess, $Server, <'otp_respond', challenge>) ]
+  , TLSServer_In('GET', ~sess, $Server, <'otp_respond', challenge>) ]
   --[ MessagingKeyServer($Number, ltk) ]->
   [ !MessagingLtkServer($Number, ltk)
-  , TLSServer_Out(~sess, $Server, 'msg_signup_ack') ]
+  , TLSServer_Out('GET', ~sess, $Server, 'msg_signup_ack') ]
 
 restriction KeysUnique:
   "All phone ltk1 ltk2 #a #b. MessagingKeyServer(phone, ltk1) @ #a
@@ -65,7 +65,7 @@ restriction KeysUnique:
 rule MessagingFin[color=#FDFD96]:
   [ !KeyServer($Server)
   , St_MessagingReg_AppWait($A, $Number, ~sess, sk)
-  , TLSClient_In(~sess, $Server, 'msg_signup_ack') ]
+  , TLSClient_In('GET', ~sess, $Server, 'msg_signup_ack') ]
   --[ ClaimMessagingKey($A, sk) ]->
   [ !MessagingLtkUser($A, $Number, sk) ]
 
@@ -78,20 +78,20 @@ rule MessagingCompromise[color=#FF6961]:
 rule MessagingKeyRequest[color=#9AD5D8]:
   [ !MessagingLtkServer($Number, ltk)
   , !KeyServer($Server)
-  , TLSServer_In(~sess, $Server, <'msg_key_req', $Number>) ]
+  , TLSServer_In('GET', ~sess, $Server, <'msg_key_req', $Number>) ]
   --[ MustBeMessagingKey(ltk) ]->
-  [ TLSServer_Out(~sess, $Server, <'msg_key_resp', $Number, ltk>) ]
+  [ TLSServer_Out('GET', ~sess, $Server, <'msg_key_resp', $Number, ltk>) ]
 
 rule ObtainKey[color=#9AD5D8]:
   [ Fr(~sess), !KeyServer($Server) ]
   --[ IsSession(~sess) ]->
-  [ TLSClient_Out(~sess, $Server, <'msg_key_req', $Phone>)
+  [ TLSClient_Out('GET', ~sess, $Server, <'msg_key_req', $Phone>)
   , St_KeyReq($A, $Phone, ~sess) ]
 
 rule ObtainKeyFin[color=#9AD5D8]:
   [ !KeyServer($Server)
   , St_KeyReq($A, $Phone, ~sess)
-  , TLSClient_In(~sess, $Server, <'msg_key_resp', $Phone, ltk>) ]
+  , TLSClient_In('GET', ~sess, $Server, <'msg_key_resp', $Phone, ltk>) ]
   -->
   [ !UseMessagingKeyFor($A, $Phone, ltk) ]
 

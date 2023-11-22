@@ -42,7 +42,7 @@ rule LinkClick[color=#FF6961]:
   --[ GenBrowserSession($Prover, $Domain, ~sess)
     , AdversaryLinkClick()
     , SomeCompromise() ]->
-  [ TLSClient_Out(~sess, $Domain, m)
+  [ TLSClient_Out('GET', ~sess, $Domain, m)
   , Browser($Prover, $Domain, ~sess) ]
 
 // OpenID Connect Auth code + PKCE flow
@@ -61,7 +61,7 @@ rule OIDCAppLaunchBrowser[color=#B4D9EF]:
     , GenBrowserSession($Prover, $IdP, ~sess)
     , GenerateCodeVerifierFor(code_verifier, $IdP)
     , IsCodeChallenge(code_challenge) ]->
-  [ TLSClient_Out(~sess, $IdP, <'oidc_req', $App, hash, nonce, code_challenge, $RedirectURL>)
+  [ TLSClient_Out('GET', ~sess, $IdP, <'oidc_req', $App, hash, nonce, code_challenge, $RedirectURL>)
   // This Out fact models that the adversary can access authorization requests
   // (if taken together with the previous Out fact).
   , Out(<hash, nonce, code_challenge>)
@@ -71,18 +71,18 @@ rule OIDCAppLaunchBrowser[color=#B4D9EF]:
 rule OIDCIdPInit[color=#B4D9EF]:
   [ !IdP($IdP)
   , !RedirectURL($IdP, $Client, $RedirectURL)
-  , TLSServer_In(~sess, $IdP, <'oidc_req', $Client, hash, nonce, code_challenge, $RedirectURL>) ]
+  , TLSServer_In('GET', ~sess, $IdP, <'oidc_req', $Client, hash, nonce, code_challenge, $RedirectURL>) ]
   --[ MustBeNonce(nonce) ]->
-  [ TLSServer_Out(~sess, $IdP, 'auth_req')
+  [ TLSServer_Out('GET', ~sess, $IdP, 'auth_req')
   , St_OIDCServer_Auth($IdP, $Client, $RedirectURL, ~sess, hash, nonce, code_challenge) ]
 
 rule OIDCAppLogin[color=#B4D9EF]:
   [ Browser($Prover, $IdP, ~sess)
   , !IdP($IdP)
-  , TLSClient_In(~sess, $IdP, 'auth_req')
+  , TLSClient_In('GET', ~sess, $IdP, 'auth_req')
   , !IdPAccount($Prover, $IdP, $Username, ~pw) ]
   --[ UseBrowserSession($Prover, $IdP, ~sess) ]->
-  [ TLSClient_Out(~sess, $IdP, <'login', $Username, ~pw>)
+  [ TLSClient_Out('GET', ~sess, $IdP, <'login', $Username, ~pw>)
   , Browser($Prover, $IdP, ~sess) ]
 
 // lemma BrowserSessionSources[reuse,use_induction]:
@@ -132,13 +132,13 @@ rule OIDCIdPIssueCode[color=#B4D9EF]:
   , !IdPAccount($User, $IdP, $Username, pw)
   , Fr(~code), Fr(~sess2)
   , St_OIDCServer_Auth($IdP, $Client, $RedirectURL, ~sess, hash, nonce, code_challenge)
-  , TLSServer_In(~sess, $IdP, <'login', $Username, pw>) ]
+  , TLSServer_In('GET', ~sess, $IdP, <'login', $Username, pw>) ]
   --[ IdPIssueCode($IdP, $Username, ~code)
     , IsPW(pw)
     , IsCode(~code)
     , MustBeNonce(nonce)
     , GenCode($IdP, ~code) ]->
-  [ TLSClient_Out(~sess2, $RedirectURL, <'code', ~code, nonce>)
+  [ TLSClient_Out('GET', ~sess2, $RedirectURL, <'code', ~code, nonce>)
   , St_OIDCIdP_Code($IdP, $Username, $Client, ~code, hash, nonce, code_challenge) ]
 
 // lemma IsPW[reuse]:
@@ -159,12 +159,12 @@ rule OIDCAppCodeRedirect[color=#B4D9EF]:
   , !MessagingApp($App)
   , Fr(~sessPost)
   , SessionStore($Prover, nonce, <$IdP, $VerifierPhone, hash, salt, code_verifier>)
-  , TLSServer_In(~sess, $RedirectURL, <'code', code, nonce>) ]
+  , TLSServer_In('GET', ~sess, $RedirectURL, <'code', code, nonce>) ]
   --[ AppReceiveCode($Prover, $IdP, code)
     , SelfIssued($Prover, nonce)
     , Neq(nonce, 'null')
     , MustBeCode(code) ]->
-  [ TLSClient_Out(~sessPost, $IdP, <'token_req', code, code_verifier>)
+  [ TLSClient_Out('POST', ~sessPost, $IdP, <'token_req', code, code_verifier>)
   , St_OIDCApp_CodeReq($Prover, $IdP, $VerifierPhone, ~sessPost, hash, salt, code)
   , SessionStore($Prover, 'null', 'null') ]
 
@@ -174,13 +174,13 @@ rule OIDCIdPTokenIssue[color=#B4D9EF]:
   in
   [ !IdPLtk($IdP, sk)
   , St_OIDCIdP_Code($IdP, $Username, $Client, code, hash, nonce, code_challenge)
-  , TLSServer_In(~sess, $IdP, <'token_req', code, code_verifier>) ]
+  , TLSServer_In('POST', ~sess, $IdP, <'token_req', code, code_verifier>) ]
   --[ Eq(s256(code_verifier), code_challenge)
     , IdPIssueToken(token)
     , MustBeToken(token)
     , UseCode(code)
     , UseCodeVerifierFor(code_verifier, $IdP) ]->
-  [ TLSServer_Out(~sess, $IdP, <'token', token>) ]
+  [ TLSServer_Out('POST', ~sess, $IdP, <'token', token>) ]
 
 // lemma CodeVerifierSecrecy[reuse]:
 //   "   All verifier idp #x #y.
@@ -230,7 +230,7 @@ rule OIDCTokenForward[color=#B4D9EF]:
   // We do not check the nonce in the ID token. This is to highlight that the
   // inclusion of a true nonce in the ID token is not strictly necessary in the
   // protocols design.
-  , TLSClient_In(~sessPost, $IdP, <'token', <<$IdP, $App, $Username, nonce, hash>, signature>>) ]
+  , TLSClient_In('POST', ~sessPost, $IdP, <'token', <<$IdP, $App, $Username, nonce, hash>, signature>>) ]
   --[ Eq(h(fp, salt), hash)
     , Eq(verify(signature, body, pkIdP), true)
     , Forward($Prover, token)
