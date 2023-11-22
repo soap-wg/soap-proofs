@@ -158,14 +158,14 @@ rule OIDCAppCodeRedirect:
   [ !RedirectURL($IdP, $App, $RedirectURL), !IdP($IdP)
   , !MessagingApp($App)
   , Fr(~sessPost)
-  , SessionStore($Prover, nonce, <$IdP, verifier, hash, salt, code_verifier>)
+  , SessionStore($Prover, nonce, <$IdP, $VerifierPhone, hash, salt, code_verifier>)
   , TLSServer_In(~sess, $RedirectURL, <'code', code, nonce>) ]
   --[ AppReceiveCode($Prover, $IdP, code)
     , SelfIssued($Prover, nonce)
     , Neq(nonce, 'null')
     , MustBeCode(code) ]->
   [ TLSClient_Out(~sessPost, $IdP, <'token_req', code, code_verifier>)
-  , St_OIDCApp_CodeReq($Prover, $IdP, verifier, ~sessPost, hash, salt, code)
+  , St_OIDCApp_CodeReq($Prover, $IdP, $VerifierPhone, ~sessPost, hash, salt, code)
   , SessionStore($Prover, 'null', 'null') ]
 
 rule OIDCIdPTokenIssue:
@@ -223,10 +223,10 @@ rule OIDCTokenForward:
       token = <body, signature>
   in
   [ !IdP($IdP), !MessagingApp($App)
-  , !UseMessagingKeyFor($Prover, verifier, pkVerifier)
+  , !UseMessagingKeyFor($Prover, $VerifierPhone, pkVerifier)
   , !UseIdPKey($Prover, $IdP, pkIdP)
   , !MessagingLtkUser($Prover, $ProverPhone, skProver)
-  , St_OIDCApp_CodeReq($Prover, $IdP, verifier, ~sessPost, hash, salt, code)
+  , St_OIDCApp_CodeReq($Prover, $IdP, $VerifierPhone, ~sessPost, hash, salt, code)
   // We do not check the nonce in the ID token. This is to highlight that the
   // inclusion of a true nonce in the ID token is not strictly necessary in the
   // protocols design.
@@ -237,7 +237,7 @@ rule OIDCTokenForward:
     , MustBeToken(token)
     , MustBeCode(code)
     , UsedCode(code) ]->
-  [ SendAsTo($Prover, verifier, <'fwd_token', token, salt>)
+  [ SendAsTo($Prover, $VerifierPhone, <'fwd_token', token, salt>)
   // Sending the code models that the adversary can access the authorization
   // response after the fact.
   , Out(code) ]
@@ -251,17 +251,18 @@ rule OIDCTokenForward:
 //         & CompromisedDomain(messagingApp, domain) @ #y)"
 
 rule OIDCTokenReceive:
-  let body = <$IdP, $App, username, nonce, hash>
-      fp = fingerprint(<pkSender, pk(skVerifier)>)
+  let body = <$IdP, $App, $Username, nonce, hash>
+      fp = fingerprint(<pkProver, pk(skVerifier)>)
   in
   [ !MessagingLtkUser($Verifier, $VerifierPhone, skVerifier)
+  , !UseMessagingKeyFor($Verifier, $ProverPhone, pkProver)
   , !MessagingApp($App)
   , !UseIdPKey($Verifier, $IdP, pkIdP)
-  , E2EE_In(pkSender, pk(skVerifier), <'fwd_token', <body, signature>, salt>) ]
+  , E2EE_In(pkProver, pk(skVerifier), <'fwd_token', <body, signature>, salt>) ]
   --[ Eq(h(fp, salt), hash)
     , Eq(verify(signature, body, pkIdP), true)
     , DidNotIssueSelf($Verifier, nonce)
-    , AssociateAs($Verifier, pkSender, $IdP, username)]->
+    , AssociateAs($Verifier, $ProverPhone, $IdP, $Username) ]->
   []
 
 restriction CheckNonceReplay:
