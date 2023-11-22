@@ -15,12 +15,13 @@ rule Client:
 
 rule MessagingApp:
   [ !Client($App) ]
-  --[ OnlyOnce('messaging_app_client') ]->
+  --[ IsMessagingApp($App)
+    , OnlyOnce('messaging_app_client') ]->
   [ !MessagingApp($App) ]
 
 rule RedirectURL:
   [ !IdP($IdP), !Client($App), !Domain($RedirectURL) ]
-  -->
+  --[ IsRedirectURL($IdP, $App, $RedirectURL) ]->
   [ !RedirectURL($IdP, $App, $RedirectURL) ]
 
 // Clients need to memorize which query they issued last
@@ -85,22 +86,6 @@ rule OIDCAppLogin[color=#B4D9EF]:
   [ TLSClient_Out('GET', ~sess, $IdP, <'login', $Username, ~pw>)
   , Browser($Prover, $IdP, ~sess) ]
 
-// lemma BrowserSessionSources[reuse,use_induction]:
-//   "   All user domain sess #x. UseBrowserSession(user, domain, sess) @ #x
-//   ==> Ex user domain #y. GenBrowserSession(user, domain, sess) @ #y & #y < #x"
-
-// lemma BrowserSessionBinding[reuse,use_induction]:
-//   "   All user1 user2 domain1 domain2 sess #x #y.
-//         UseBrowserSession(user1, domain1, sess) @ #x
-//         & GenBrowserSession(user2, domain2, sess) @ #y
-//   ==> user1 = user2 & domain1 = domain2"
-
-// lemma BrowserSessionUnique[reuse,use_induction]:
-//   "   All user1 user2 domain1 domain2 sess #x #y.
-//         GenBrowserSession(user1, domain1, sess) @ #x
-//         & GenBrowserSession(user2, domain2, sess) @ #y
-//   ==> #x = #y"
-
 // lemma UsernamesUnique[reuse]:
 //   "All userA userB idp username pw1 pw2 #a #b.
 //       ClaimUsername(userA, idp, username, pw1) @ #a
@@ -113,11 +98,12 @@ rule OIDCAppLogin[color=#B4D9EF]:
 //   ==> (Ex #x. UsernameServer(idp, username, pw) @ #x)
 //       | (Ex sk #x. CompromisedDomain(idp, sk) @ #x)"
 
-// lemma PasswordsConfidential[reuse]:
-//   "All user idp username pw #t. UsernameApp(user, idp, username, pw) @ #t
-//   ==> not (Ex #x. !KU(pw) @ #x)
-//       | (Ex sk #x. CompromisedDomain(idp, sk) @ #x)
-//       | (Ex someone #x. CompromisedAccount(someone, idp, username) @ #x)"
+lemma PasswordsConfidential[reuse]:
+  "All user idp username pw #t1 #t2.
+        ( Username(user, idp, username, pw) @ #t1
+        & KU(pw) @ #t2)
+    ==> ( (Ex #x. CompromisedDomain(idp) @ #x)
+        | (Ex someone #x. CompromisedAccount(someone, idp, username) @ #x))"
 
 // lemma MessagingKeysUnique[reuse]:
 //   "All userA userB sk #a #b.
@@ -144,7 +130,7 @@ rule OIDCIdPIssueCode[color=#B4D9EF]:
 // lemma IsPW[reuse]:
 //   "All pw #x. IsPW(pw) @ #x
 //   ==>   (Ex u i un #y. UsernameApp(u, i, un, pw) @ #y)
-//       | (Ex #y. !KU(pw) @ #y)"
+//       | (Ex #y. KU(pw) @ #y)"
 
 // lemma UserAccountRequiresSignUp[reuse]:
 //   "All u i un pw #x. ClaimUsername(u, i, un, pw) @ #x
@@ -178,16 +164,25 @@ rule OIDCIdPTokenIssue[color=#B4D9EF]:
   --[ Eq(s256(code_verifier), code_challenge)
     , IdPIssueToken(token)
     , MustBeToken(token)
-    , UseCode(code)
+    , UseCode($IdP, $Client, code)
     , UseCodeVerifierFor(code_verifier, $IdP) ]->
   [ TLSServer_Out('POST', ~sess, $IdP, <'token', token>) ]
 
-// lemma CodeVerifierSecrecy[reuse]:
-//   "   All verifier idp #x #y.
-//         UseCodeVerifierFor(verifier, idp) @ #x
-//         & GenerateCodeVerifierFor(verifier, idp) @ #y
-//   ==> not (Ex #z. !KU(verifier) @ #z)
-//       | (Ex domain #z. CompromisedDomain(idp, domain) @ #z)"
+lemma CodeSecrecy[reuse]:
+  "All idp client code #t1 #t2 #t3.
+        ( UseCode(idp, client, code) @ #t1
+        & IsMessagingApp(client) @ #t2
+        & KU(code) @ #t3)
+    ==> ( (Ex #x. UsedCode(code) @ #x & #x < #t3)
+        | (Ex url #x #y. IsRedirectURL(idp, client, url) @ #x & CompromisedDomain(url) @ #y)
+        | (Ex #x. CompromisedDomain(idp) @ #x))"
+
+lemma CodeVerifierSecrecy[reuse]:
+  "   All verifier idp #x #y.
+        UseCodeVerifierFor(verifier, idp) @ #x
+        & GenerateCodeVerifierFor(verifier, idp) @ #y
+  ==> not (Ex #z. KU(verifier) @ #z)
+      | (Ex #z. CompromisedDomain(idp) @ #z)"
 
 // This sources lemma combines multiple in spirit, but they need to assist each
 // other in the proof, hence, they are combined.
@@ -197,25 +192,25 @@ lemma TokenFormatAndOTPLearning[sources]:
     ==> (Ex first second user idp client nonce hashed sk.
             token = <first, second>
           & first = <idp, client, user, nonce, hashed>
-          & ((Ex #h. !KU(nonce) @ #h & #h < #i) | (Ex #h. GenNonce(nonce) @ #h))
-          & ((Ex #h. !KU(hashed) @ #h & #h < #i) | (Ex fp salt. hashed = h(fp, salt)))
+          & ((Ex #h. KU(nonce) @ #h & #h < #i) | (Ex #h. GenNonce(nonce) @ #h))
+          & ((Ex #h. KU(hashed) @ #h & #h < #i) | (Ex fp salt. hashed = h(fp, salt)))
           & second = sign(first, sk))
   ) & (All nonce #i.
         MustBeNonce(nonce) @ #i
-    ==> ( (Ex #h. !KU(nonce) @ #h & #h < #i)
+    ==> ( (Ex #h. KU(nonce) @ #h & #h < #i)
         | (Ex #h. GenNonce(nonce) @ #h)))
   & (All code #i.
         MustBeCode(code) @ #i
-    ==> ( (Ex #h. !KU(code) @ #h & #h < #i)
+    ==> ( (Ex #h. KU(code) @ #h & #h < #i)
         | (Ex #h. IsCode(code) @ #h)))
   & (All chall #i.
         MustBeOTP(chall) @ #i
     ==> ( (Ex #j. IsOTP(chall) @ #j & #j < #i)
-      | (Ex #j. !KU(chall) @ #j & #j < #i)))
+      | (Ex #j. KU(chall) @ #j & #j < #i)))
   & (All ltk #i.
         MustBeMessagingKey(ltk) @ #i
     ==> ( (Ex sk #j. IsMessagingKey(sk) @ #j & ltk = pk(sk))
-      | (Ex #j. !KU(ltk) @ #j & #j < #i)))"
+      | (Ex #j. KU(ltk) @ #j & #j < #i)))"
 
 rule OIDCTokenForward[color=#B4D9EF]:
   let body = <$IdP, $App, $Username, nonce, hash>
