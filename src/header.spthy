@@ -19,22 +19,22 @@ rule Phone:
     , IsPhoneNumber($Number) ]->
   [ !Phone($A, $Number) ]
 
-rule SMSOut:
+rule SMSOut[color=#FFFFFF]:
   [ SMS_Out($Number, sms), !Phone($A, $Number) ]
   -->
   [ !SMS($Number, sms) ]
 
-rule AdversarySMSOut:
+rule AdversarySMSOut[color=#FF6961]:
   [ In(sms), !Phone($A, $Number) ]
   -->
   [ !SMS($Number, sms) ]
 
-rule SMSIn:
+rule SMSIn[color=#FFFFFF]:
   [ !SMS($Number, sms) ]
   -->
   [ SMS_In($Number, sms) ]
 
-rule SMSLeak:
+rule SMSLeak[color=#FF6961]:
   [ !SMS($Number, sms) ]
   --[ SMSLeak()
     , SomeCompromise() ]->

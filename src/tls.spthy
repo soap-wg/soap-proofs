@@ -9,44 +9,43 @@ rule DomainCompromise:
     , SomeCompromise() ]->
   [ !DomainCompromise($Domain) ]
 
-rule TLSClientOut:
+rule TLSClientOut[color=#FFFFFF]:
   [ TLSClient_Out(~sess, $Domain, msg), !Domain($Domain) ]
   -->
   [ !TLSClient(~sess, $Domain, msg) ]
 
-rule TLSAdversaryClientOut:
+rule TLSAdversaryClientOut[color=#FF6961]:
   [ In(~sess), In(msg), !Domain($Domain) ]
   -->
   [ !TLSClient(~sess, $Domain, msg) ]
 
-rule TLSServerOut:
+rule TLSServerOut[color=#FFFFFF]:
   [ TLSServer_Out(~sess, $Domain, msg), !Domain($Domain) ]
   -->
   [ !TLSServer(~sess, $Domain, msg) ]
 
-rule TLSAdversaryServerOut:
+rule TLSAdversaryServerOut[color=#FF6961]:
   [ In(~sess), In(msg), !DomainCompromise($Domain) ]
   -->
   [ !TLSServer(~sess, $Domain, msg) ]
 
-rule TLSClientToServer:
+rule TLSClientToServer[color=#FFFFFF]:
   [ !TLSClient(~sess, $Domain, msg) ]
   -->
   [ TLSServer_In(~sess, $Domain, msg) ]
 
-rule TLSClientToAdversaryServer:
+rule TLSClientToAdversaryServer[color=#FF6961]:
   [ !TLSClient(~sess, $Domain, msg)
   , !DomainCompromise($Domain) ]
   -->
   [ Out(msg), Out(~sess) ]
 
-rule TLSServerToClient:
+rule TLSServerToClient[color=#FFFFFF]:
   [ !TLSServer(~sess, $Domain, msg) ]
   -->
   [ TLSClient_In(~sess, $Domain, msg) ]
 
-rule TLSServerToAdversaryClient:
-  [ In(~sess)
-  , !TLSServer(~sess, $Domain, msg) ]
+rule TLSServerToAdversaryClient[color=#FF6961]:
+  [ In(~sess), !TLSServer(~sess, $Domain, msg) ]
   -->
   [ Out(msg) ]

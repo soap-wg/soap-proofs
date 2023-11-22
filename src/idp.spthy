@@ -4,25 +4,25 @@ rule IdPSetup:
   [ !IdP($IdP), !IdPLtk($IdP, ~sk)
   , Out(pk(~sk)) ]
 
-rule IdPCompromise:
+rule IdPCompromise[color=#FF6961]:
   [ !IdPLtk($IdP, sk) ]
   --[ CompromisedIdP($IdP)
     , SomeCompromise() ]->
   [ !IdPCompromise($IdP), Out(sk) ]
 
-rule IdPKeyRequest:
+rule IdPKeyRequest[color=#9AD5D8]:
   [ !IdP($IdP), Fr(~sess) ]
   -->
   [ TLSClient_Out(~sess, $IdP, 'pk_req')
   , St_IdPKeyReq($IdP, ~sess) ]
 
-rule IdPPkDistribute:
+rule IdPPkDistribute[color=#9AD5D8]:
   [ TLSServer_In(~sess, $IdP, 'pk_req')
   , !IdPLtk($IdP, sk) ]
   -->
   [ TLSServer_Out(~sess, $IdP, <'idp_pk', pk(sk)>) ]
 
-rule IdPKeyObtain:
+rule IdPKeyObtain[color=#9AD5D8]:
   [ St_IdPKeyReq($IdP, ~sess)
   , TLSClient_In(~sess, $IdP, <'idp_pk', idpPk>) ]
   -->
@@ -39,7 +39,7 @@ restriction AccountsUnique:
         & Username(p2, idp, u, pw2) @ #b)
     ==> (p1 = p2 & pw1 = pw2 & #a = #b)"
 
-rule IdPAccountCompromise:
+rule IdPAccountCompromise[color=#FF6961]:
   [ !IdPAccount($A, $IdP, $Username, ~pw) ]
   --[ CompromisedAccount($A, $IdP, $Username)
     , SomeCompromise() ]->

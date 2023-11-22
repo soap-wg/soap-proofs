@@ -37,7 +37,7 @@ rule ClearSessionStore:
 // It is necessary handle forwards from the adversary dedicatedly, because
 // otherwise, the adversary can choose the session they forward to. This would
 // be unrealistic, though.
-rule LinkClick:
+rule LinkClick[color=#FF6961]:
   [ Fr(~sess), In(m), !Domain($Domain) ]
   --[ GenBrowserSession($Prover, $Domain, ~sess)
     , AdversaryLinkClick()
@@ -46,7 +46,7 @@ rule LinkClick:
   , Browser($Prover, $Domain, ~sess) ]
 
 // OpenID Connect Auth code + PKCE flow
-rule OIDCAppLaunchBrowser:
+rule OIDCAppLaunchBrowser[color=#B4D9EF]:
   let fp = fingerprint(<pk(skProver), pkVerifier>)
       hash = h(fp, salt)
       code_challenge = s256(code_verifier)
@@ -68,7 +68,7 @@ rule OIDCAppLaunchBrowser:
   , SessionStore($Prover, nonce, <$IdP, $VerifierPhone, hash, salt, code_verifier>)
   , Browser($Prover, $IdP, ~sess) ]
 
-rule OIDCIdPInit:
+rule OIDCIdPInit[color=#B4D9EF]:
   [ !IdP($IdP)
   , !RedirectURL($IdP, $Client, $RedirectURL)
   , TLSServer_In(~sess, $IdP, <'oidc_req', $Client, hash, nonce, code_challenge, $RedirectURL>) ]
@@ -76,7 +76,7 @@ rule OIDCIdPInit:
   [ TLSServer_Out(~sess, $IdP, 'auth_req')
   , St_OIDCServer_Auth($IdP, $Client, $RedirectURL, ~sess, hash, nonce, code_challenge) ]
 
-rule OIDCAppLogin:
+rule OIDCAppLogin[color=#B4D9EF]:
   [ Browser($Prover, $IdP, ~sess)
   , !IdP($IdP)
   , TLSClient_In(~sess, $IdP, 'auth_req')
@@ -127,7 +127,7 @@ rule OIDCAppLogin:
 //       | (Ex messaging sk #t1 #t2. CompromisedDomain(messaging, sk) @ #t1
 //           & IsMessaging(messaging) @ #t2)"
 
-rule OIDCIdPIssueCode:
+rule OIDCIdPIssueCode[color=#B4D9EF]:
   [ !IdP($IdP)
   , !IdPAccount($User, $IdP, $Username, pw)
   , Fr(~code), Fr(~sess2)
@@ -151,7 +151,7 @@ rule OIDCIdPIssueCode:
 //   ==>   (Ex #y. UsernameApp(u, i, un, pw) @ #y)
 //       | (Ex d #y. CompromisedDomain(i, d) @ #y)"
 
-rule OIDCAppCodeRedirect:
+rule OIDCAppCodeRedirect[color=#B4D9EF]:
   // Do not pattern match who the browser session was initiated for. The Messaging
   // app cannot verify this. It is only critical that the adversary could not
   // choose the session.
@@ -168,7 +168,7 @@ rule OIDCAppCodeRedirect:
   , St_OIDCApp_CodeReq($Prover, $IdP, $VerifierPhone, ~sessPost, hash, salt, code)
   , SessionStore($Prover, 'null', 'null') ]
 
-rule OIDCIdPTokenIssue:
+rule OIDCIdPTokenIssue[color=#B4D9EF]:
   let tokenBody = <$IdP, $Client, $Username, nonce, hash>
       token = <tokenBody, sign(tokenBody, sk)>
   in
@@ -217,7 +217,7 @@ lemma TokenFormatAndOTPLearning[sources]:
     ==> ( (Ex sk #j. IsMessagingKey(sk) @ #j & ltk = pk(sk))
       | (Ex #j. !KU(ltk) @ #j & #j < #i)))"
 
-rule OIDCTokenForward:
+rule OIDCTokenForward[color=#B4D9EF]:
   let body = <$IdP, $App, $Username, nonce, hash>
       fp = fingerprint(<pk(skProver), pkVerifier>)
       token = <body, signature>
@@ -250,7 +250,7 @@ rule OIDCTokenForward:
 //       | (Ex messagingApp domain #x #y. IsMessagingAppFor(idp, messagingApp) @ #x
 //         & CompromisedDomain(messagingApp, domain) @ #y)"
 
-rule OIDCTokenReceive:
+rule OIDCTokenReceive[color=#B4D9EF]:
   let body = <$IdP, $App, $Username, nonce, hash>
       fp = fingerprint(<pkProver, pk(skVerifier)>)
   in
