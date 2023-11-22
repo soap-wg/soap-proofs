@@ -36,7 +36,7 @@ def matchAgainstList(priorityList, lines):
     except StopIteration:
       pass
 
-fresh_reg = re.compile('!KU\( (~n\.?\d*) \)')
+fresh_reg = re.compile(r'!KU\( (~n\.?\d*) \)')
 def gatherFreshNStream(lines):
   with_fresh = list(filter(bool, map(lambda ln: fresh_reg.match(ln[1]), lines)))
   return map(lambda match: match[1], with_fresh)
@@ -53,14 +53,14 @@ if argv[1] == 'TokenFormatAndOTPLearning':
     '~~>',
     'St_OIDCServer_Auth',
     'St_OIDCIdP_Code',
-    re.compile('SessionStore\(.+nonce'),
+    re.compile(r'SessionStore\(.+nonce'),
     '\'oidc_req\'',
     '\'login\'',
     '\'auth_req\'',
     '\'code\'',
     '\'token_req\'',
     '\'token\'',
-    re.compile('TLSServer_In.+<\'signal_req\', \$Number, ltk>'),
+    re.compile(r'TLSServer_In.+<\'signal_req\', \$Number, ltk>'),
     'TLSServer_In',  # lowest priority
   ], lines)
 elif argv[1] in [
@@ -102,7 +102,7 @@ elif argv[1] == 'CodeIsSingleUse':
   ], lines)
 elif argv[1] == 'SocialAuthentication':
   fvars = gatherFreshNStream(lines)
-  rs = map(lambda fvar: re.compile(f'\(∀ #\w+\. \(!KU\( {re.escape(fvar)} \) @ #\w+\) ⇒ ⊥\)'), fvars)
+  rs = map(lambda fvar: re.compile(r'\(∀ #\w+\. \(!KU\( ' + re.escape(fvar) + r' \) @ #\w+\) ⇒ ⊥\)'), fvars)
   match = matchAgainstList(list(rs) + [
     'St_',
     '!Domain',
@@ -124,7 +124,7 @@ elif argv[1] == 'SocialAuthentication':
     '\'sign_up\'',
     '\'idp_ack\'',
     '\'fwd_token\'',
-    re.compile('∃ #\w+. \(Username(App|Server)\('),
+    re.compile(r'∃ #\w+. \(Username(App|Server)\('),
     'GenBrowserSession',
     '!KU( sign',
     '~sessPost',
