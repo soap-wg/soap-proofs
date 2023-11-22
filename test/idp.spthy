@@ -1,0 +1,8 @@
+theory IdPTest
+begin
+
+#include "../src/header.spthy"
+#include "../src/tls.spthy"
+#include "../src/idp.spthy"
+
+end

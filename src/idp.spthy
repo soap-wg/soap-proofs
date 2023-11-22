@@ -1,0 +1,86 @@
+rule IdPSetup:
+  [ !Domain($IdP), Fr(~sk) ]
+  --[ ClaimIdPKey($IdP, ~sk)
+    , IsIdP($IdP) ]->
+  [ !IdP($IdP), !IdPLtk($IdP, ~sk)
+  , Out(pk(~sk)) ]
+
+rule IdPCompromise:
+  [ !IdPLtk($IdP, sk) ]
+  --[ CompromisedIdP($IdP)
+    , SomeCompromise() ]->
+  [ !IdPCompromise($IdP), Out(sk) ]
+
+rule IdPKeyRequest:
+  [ !IdP($IdP), Fr(~sess) ]
+  -->
+  [ TLSClient_Out(~sess, $IdP, 'pk_req')
+  , St_IdPKeyReq($IdP, ~sess) ]
+
+rule IdPPkDistribute:
+  [ TLSServer_In(~sess, $IdP, 'pk_req')
+  , !IdPLtk($IdP, sk) ]
+  -->
+  [ TLSServer_Out(~sess, $IdP, <'idp_pk', pk(sk)>) ]
+
+rule IdPKeyObtain:
+  [ St_IdPKeyReq($IdP, ~sess)
+  , TLSClient_In(~sess, $IdP, <'idp_pk', idpPk>) ]
+  -->
+  [ !UseIdPKey($User, $IdP, idpPk) ]
+
+rule IdPSignUp:
+  [ Fr(~pw), !IdP($IdP) ]
+  --[ Username($A, $IdP, $Username, ~pw)
+    , IsUser($Username) ]->
+  [ !IdPAccount($A, $IdP, $Username, ~pw) ]
+
+restriction AccountsUnique:
+  "All p1 p2 idp u pw1 pw2 #a #b.
+        ( Username(p1, idp, u, pw1) @ #a
+        & Username(p2, idp, u, pw2) @ #b)
+    ==> (p1 = p2 & pw1 = pw2 & #a = #b)"
+
+rule IdPAccountCompromise:
+  [ !IdPAccount($A, $IdP, $Username, ~pw) ]
+  --[ CompromisedAccount($A, $IdP, $Username)
+    , SomeCompromise() ]->
+  [ Out(~pw) ]
+
+rule IdPPublishClient:
+  [ Fr(~sess), Fr(~m)
+  , !IdPAccount($A, $IdP, $Username, ~pw) ]
+  --[ SendIdP($IdP, $Username, ~m)
+    , Sender($A) ]->
+  [ TLSClient_Out(~sess, $IdP, <'publish', $Username, ~pw, ~m>) ]
+
+rule IdPPublishServer:
+  [ !IdPAccount(p, $IdP, $Username, ~pw)
+  , TLSServer_In(~sess, $IdP, <'publish', $Username, ~pw, m>) ]
+  -->
+  [ Out(m)
+  , !Publish($IdP, $Username, m) ]
+
+rule IdPPublishCompromised:
+  [ !IdPCompromise($IdP), In(m) ]
+  -->
+  [ !Publish($IdP, $Username, m) ]
+
+rule IdPRead:
+  [ !Publish($IdP, $Username, m) ]
+  --[ ReceiveIdP($IdP, $Username, m) ]->
+  []
+
+lemma PublishExecutability:
+  exists-trace
+  "Ex user idp m #t.
+       ReceiveIdP(idp, user, m) @ #t
+    & (not Ex #x. SomeCompromise() @ #x)"
+
+lemma IdPChannelSenderInvariance:
+  "All user idp m #t.
+        ReceiveIdP(idp, user, m) @ #t
+    ==>   (Ex #x. SendIdP(idp, user, m) @ #x)
+        | (Ex #x. CompromisedIdP(idp) @ #x)
+        | (Ex #x. CompromisedDomain(idp) @ #x)
+        | (Ex p #x. CompromisedAccount(p, idp, user) @ #x)"

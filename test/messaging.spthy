@@ -1,0 +1,14 @@
+theory MessagingTest
+begin
+
+#include "../src/header.spthy"
+#include "../src/tls.spthy"
+#include "../src/messaging.spthy"
+
+lemma OTPChallenge[sources]:
+  "All challenge #t.
+        MustBeOTP(challenge) @ #t
+    ==>   (Ex #x. KU(challenge) @ #x & #x < #t)
+        | (Ex #x. IsOTP(challenge) @ #x)"
+
+end

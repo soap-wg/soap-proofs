@@ -1,167 +1,32 @@
-theory SignalOIDC
+theory MessagingOIDC
 begin
 
 heuristic: o "./oracle.py"
 
-builtins: signing
-functions: fingerprint/1, extract/1, s256/1, h/2
+#include "src/header.spthy"
+#include "src/tls.spthy"
+#include "src/idp.spthy"
+#include "src/messaging.spthy"
 
-// Fingerprint function only needs to be collision resistant
-equations: extract(fingerprint(x)) = x
-
-rule Phone:
+rule Client:
   []
-  --[ ClaimNumber($A, $Number) ]->
-  [ !Phone($A, $Number) ]
+  --[ IsClient($Client) ]->
+  [ !Client($App) ]
 
-// TLS Channel
-functions: cert/1, tlsClientMsg/3, tlsServerMsg/3, tlsClientReceive/2, tlsServerReceive/2, browserLaunch/3, forwardReceive/2
-equations:
-  tlsClientReceive(tlsServerMsg(~sess, ~domain, m), ~sess) = m
-, tlsServerReceive(tlsClientMsg(~sess, cert(~domain), m), ~domain) = m
-, tlsServerReceive(tlsClientMsg(~sess, cert(~domain), m), ~domain) = ~sess
-, forwardReceive(browserLaunch(~sess, cert(~domain), m), ~domain) = m
-, forwardReceive(browserLaunch(~sess, cert(~domain), m), ~domain) = ~sess
+rule MessagingApp:
+  [ !Client($App) ]
+  --[ OnlyOnce('messaging_app_client') ]->
+  [ !MessagingApp($App) ]
 
-rule TLSSetup:
-  [ Fr(~domain) ]
-  --[ OnlyOneDomain($A) ]->
-  [ !Domain($A, ~domain), Out(cert(~domain)) ]
-
-restriction OnlyOneDomain:
-  "   All domain #x #y. OnlyOneDomain(domain) @ #x & OnlyOneDomain(domain) @ #y
-  ==> #x = #y"
-
-rule DomainCompromise:
-  [ !Domain($A, ~domain) ]
-  --[ CompromisedDomain($A, ~domain) ]->
-  [ Out(~domain) ]
-
-rule SignalServer:
-  [ !Domain($Signal, ~domain) ]
-  --[ OnlyOnceSignal(), IsSignal($Signal) ]->
-  [ !SignalDomain(~domain) ]
-
-restriction OnlyOnceSignal:
-  "All #i #j. OnlyOnceSignal() @ #i & OnlyOnceSignal() @ #j ==> #i = #j"
-
-rule SignalApp:
-  [ !Domain($IdP, ~secret), !Domain($SignalApp, ~domain) ]
-  --[ OnlyOnceSignalAppIdP($IdP)
-    , OnlyOnceSignalApp($SignalApp)
-    , IsSignalAppFor($IdP, $SignalApp) ]->
-  [ !SignalAppDomain($IdP, ~domain) ]
-
-restriction OnlyOnceSignalAppIdP:
-  "All idp #i #j. OnlyOnceSignalAppIdP(idp) @ #i & OnlyOnceSignalAppIdP(idp) @ #j ==> #i = #j"
-
-restriction OnlyOnceSignalApp:
-  "All c #i #j. OnlyOnceSignalApp(c) @ #i & OnlyOnceSignalApp(c) @ #j ==> #i = #j"
-
-// Signal registration and channel
-functions: signalMsg/3, signalRead/2
-equations: signalRead(signalMsg(~senderSk, pk(~receiverSk), m), ~receiverSk) = m
-
-rule SignalRegister:
-  [ Fr(sk), Fr(~sess), !Phone($A, $Number), !SignalDomain(~signal) ]
-  --[ IsSignalKey(sk) ]->
-  // Using !SignalDomain assumes that the adversary is not able to
-  // social-engineer their victim into using their website or app when signing
-  // up for Signal
-  [ Out(tlsClientMsg(~sess, cert(~signal), <'signal_req', $Number, pk(sk)>))
-  , Out(pk(sk))
-  , St_SignalReg_App($A, ~sess, sk) ]
-
-rule SignalChallenge:
-  [ !SignalDomain(~signal)
-  , In(tlsClientMsg(~sess, cert(~signal), <'signal_req', $Number, ltk>))
-  , Fr(challenge) ]
-  --[ OTPChallenge(challenge) ]->
-  [ Out(<'otp', challenge>)
-  , St_SigReg_Server(~sess, $Number, ltk, challenge) ]
-
-rule SignalRespond:
-  [ In(<'otp', challenge>)
-  , !SignalDomain(~signal)
-  , St_SignalReg_App($A, ~sess, sk) ]
-  --[ OTPRespond(challenge) ]->
-  [ Out(tlsClientMsg(~sess, cert(~signal), <'otp_respond', challenge>))
-  , St_SignalReg_AppWait($A, ~sess, sk) ]
-
-rule SignalAck:
-  [ !SignalDomain(~signal)
-  , In(tlsClientMsg(~sess, cert(~signal), <'otp_respond', challenge>))
-  , St_SigReg_Server(~sess, phone, ltk, challenge) ]
-  --[ SignalKeyServer(phone, ltk) ]->
-  [ !SignalLtkServer(phone, ltk)
-  , Out(tlsServerMsg(~sess, ~signal, 'signal_ack')) ]
-
-restriction KeysUnique:
-  "All phone ltk1 ltk2 #a #b. SignalKeyServer(phone, ltk1) @ #a
-      & SignalKeyServer(phone, ltk2) @ #b
-  ==> #a = #b & ltk1 = ltk2"
-
-rule SignalFin:
-  [ !SignalDomain(~signal)
-  , St_SignalReg_AppWait($A, ~sess, sk)
-  , In(tlsServerMsg(~sess, ~signal, 'signal_ack')) ]
-  --[ ClaimSignalKey($A, sk) ]->
-  [ !SignalLtkApp($A, sk) ]
-
-rule SignalKeyRequest:
-  [ Fr(~sess), !SignalLtkServer(phone, ltk), !SignalDomain(~signal) ]
-  --[ ShareSignalKey(ltk) ]->
-  [ Out(tlsServerMsg(~sess, ~signal, <'signal_pk_response', phone, ltk>)) ]
-
-rule SignalCompromise:
-  [ !SignalLtkApp($A, ~sk) ]
-  --[ CompromisedSignal($A, ~sk) ]->
-  [ Out(~sk) ]
-
-// IdP setup
-rule IdPSetup:
-  [ Fr(sk) ]
-  --[ ClaimIdPKey($IdP, sk) ]->
-  [ !IdPLtk($IdP, sk), Out(pk(sk)) ]
-
-rule IdPPkDistribute:
-  [ Fr(~sess), !IdPLtk($IdP, sk), !Domain($IdP, ~IdPKey) ]
+rule RedirectURL:
+  [ !IdP($IdP), !Client($App), !Domain($RedirectURL) ]
   -->
-  [ Out(tlsServerMsg(~sess, ~IdPKey, <'idp_pk_response', pk(sk)>)) ]
+  [ !RedirectURL($IdP, $App, $RedirectURL) ]
 
-rule IdPSignUpInit:
-  [ Fr(pw), Fr(~sess), !Domain($IdP, ~IdPKey) ]
-  --[ UsernameApp($A, $IdP, $Username, pw) ]->
-  [ Out(tlsClientMsg(~sess, cert(~IdPKey), <'sign_up', $Username, pw>))
-  , St_IdPRegistration_App(~sess, $A, $IdP, $Username, pw) ]
-
-rule IdPSignUpServer:
-  [ !Domain($IdP, ~IdPKey)
-  , In(tlsClientMsg(~sess, cert(~IdPKey), <'sign_up', username, pw>)) ]
-  --[ UsernameServer($IdP, username, pw)
-    , AccountsUnique($IdP, username) ]->
-  [ !IdPAccountServer($IdP, username, pw)
-  , Out(tlsServerMsg(~sess, ~IdPKey, 'idp_ack')) ]
-
-restriction AccountsUnique:
-  "All idp u #a #b. AccountsUnique(idp, u) @ #a & AccountsUnique(idp, u) @ #b ==> #a = #b"
-
-rule IdPSignUpFin:
-  [ St_IdPRegistration_App(~sess, $A, $IdP, $Username, pw)
-  , !Domain($IdP, ~IdPKey)
-  , In(tlsServerMsg(~sess, ~IdPKey, 'idp_ack')) ]
-  --[ ClaimUsername($A, $IdP, $Username, pw) ]->
-  [ !IdPAccountApp($A, $IdP, $Username, pw) ]
-
-rule IdPAccountCompromise:
-  [ !IdPAccountApp($A, $IdP, $Username, ~pw) ]
-  --[ CompromisedAccount($A, $IdP, $Username) ]->
-  [ Out(~pw) ]
-
-// Browser setup
+// Clients need to memorize which query they issued last
 rule InitSessionStore:
   []
-  --[ OnlyOnceInitSessionStore($User) ]->
+  --[ OnlyOnce(<'init_session_store', $User>) ]->
   [ SessionStore($User, 'null', 'null') ]
 
 rule ClearSessionStore:
@@ -169,18 +34,16 @@ rule ClearSessionStore:
   -->
   [ SessionStore($User, 'null', 'null') ]
 
-restriction OnlyOnceInitSessionStore:
-  "All u #x #y. OnlyOnceInitSessionStore(u) @ #x & OnlyOnceInitSessionStore(u) @ #y ==> #x = #y"
-
 // It is necessary handle forwards from the adversary dedicatedly, because
 // otherwise, the adversary can choose the session they forward to. This would
 // be unrealistic, though.
 rule LinkClick:
-  [ Fr(~sess), In(m), !Domain($Party, ~domain) ]
-  --[ GenBrowserSession($Prover, $Party, ~sess)
-    , AdversaryLinkClick() ]->
-  [ Out(browserLaunch(~sess, cert(~domain), m))
-  , Browser($Prover, $Party, ~sess) ]
+  [ Fr(~sess), In(m), !Domain($Domain) ]
+  --[ GenBrowserSession($Prover, $Domain, ~sess)
+    , AdversaryLinkClick()
+    , SomeCompromise() ]->
+  [ TLSClient_Out(~sess, $Domain, m)
+  , Browser($Prover, $Domain, ~sess) ]
 
 // OpenID Connect Auth code + PKCE flow
 rule OIDCAppLaunchBrowser:
@@ -188,244 +51,220 @@ rule OIDCAppLaunchBrowser:
       hash = h(fp, salt)
       code_challenge = s256(code_verifier)
   in
-  [ !Domain($IdP, ~IdPKey)
-  , !SignalDomain(~signal)
-  , !SignalLtkApp($Prover, skProver)
-  , !IdPAccountApp($Prover, $IdP, username, pw)
-  , In(tlsServerMsg(~sessPk, ~signal, <'signal_pk_response', phone, pkVerifier>))
+  [ !IdP($IdP), !MessagingApp($App)
+  , !RedirectURL($IdP, $App, $RedirectURL)
+  , !MessagingLtkUser($Prover, $ProverPhone, skProver)
+  , !UseMessagingKeyFor($Prover, $VerifierPhone, pkVerifier)
   , SessionStore($Prover, drop1, drop2)
   , Fr(salt), Fr(nonce), Fr(code_verifier), Fr(~sess) ]
-  --[ OIDCRequest($Prover, $IdP, pkVerifier, salt, hash, nonce, code_challenge)
-    , GenNonce(nonce)
+  --[ GenNonce(nonce)
     , GenBrowserSession($Prover, $IdP, ~sess)
-    , GenerateCodeVerifierFor(code_verifier, $IdP) ]->
-  [ Out(browserLaunch(~sess, cert(~IdPKey), <'oidc_req', hash, nonce, code_challenge>))
+    , GenerateCodeVerifierFor(code_verifier, $IdP)
+    , IsCodeChallenge(code_challenge) ]->
+  [ TLSClient_Out(~sess, $IdP, <'oidc_req', $App, hash, nonce, code_challenge, $RedirectURL>)
   // This Out fact models that the adversary can access authorization requests
   // (if taken together with the previous Out fact).
   , Out(<hash, nonce, code_challenge>)
-  , SessionStore($Prover, nonce, <$IdP, hash, salt, code_verifier>)
+  , SessionStore($Prover, nonce, <$IdP, $VerifierPhone, hash, salt, code_verifier>)
   , Browser($Prover, $IdP, ~sess) ]
 
 rule OIDCIdPInit:
-  [ !Domain($IdP, ~IdPKey)
-  , In(browserLaunch(~sess, cert(~IdPKey), <'oidc_req', hash, nonce, code_challenge>)) ]
-  --[ AuthenticationRequest(~sess, $IdP, hash, nonce, code_challenge)
-    , IsNonce(nonce) ]->
-  [ Out(tlsServerMsg(~sess, ~IdPKey, 'auth_req'))
-  , St_OIDCServer_Auth($IdP, ~sess, hash, nonce, code_challenge) ]
+  [ !IdP($IdP)
+  , !RedirectURL($IdP, $Client, $RedirectURL)
+  , TLSServer_In(~sess, $IdP, <'oidc_req', $Client, hash, nonce, code_challenge, $RedirectURL>) ]
+  --[ MustBeNonce(nonce) ]->
+  [ TLSServer_Out(~sess, $IdP, 'auth_req')
+  , St_OIDCServer_Auth($IdP, $Client, $RedirectURL, ~sess, hash, nonce, code_challenge) ]
 
 rule OIDCAppLogin:
   [ Browser($Prover, $IdP, ~sess)
-  , !Domain($IdP, ~IdPKey)
-  , In(tlsServerMsg(~sess, ~IdPKey, 'auth_req'))
-  , !IdPAccountApp($Prover, $IdP, $Username, pw) ]
-  --[ AuthenticationResponse(~sess, $Prover, $IdP, $Username)
-    , UseBrowserSession($Prover, $IdP, ~sess) ]->
-  [ Out(tlsClientMsg(~sess, cert(~IdPKey), <'login', $Username, pw>))
+  , !IdP($IdP)
+  , TLSClient_In(~sess, $IdP, 'auth_req')
+  , !IdPAccount($Prover, $IdP, $Username, ~pw) ]
+  --[ UseBrowserSession($Prover, $IdP, ~sess) ]->
+  [ TLSClient_Out(~sess, $IdP, <'login', $Username, ~pw>)
   , Browser($Prover, $IdP, ~sess) ]
 
-lemma BrowserSessionSources[reuse,use_induction]:
-  "   All user domain sess #x. UseBrowserSession(user, domain, sess) @ #x
-  ==> Ex user domain #y. GenBrowserSession(user, domain, sess) @ #y & #y < #x"
+// lemma BrowserSessionSources[reuse,use_induction]:
+//   "   All user domain sess #x. UseBrowserSession(user, domain, sess) @ #x
+//   ==> Ex user domain #y. GenBrowserSession(user, domain, sess) @ #y & #y < #x"
 
-lemma BrowserSessionBinding[reuse,use_induction]:
-  "   All user1 user2 domain1 domain2 sess #x #y.
-        UseBrowserSession(user1, domain1, sess) @ #x
-        & GenBrowserSession(user2, domain2, sess) @ #y
-  ==> user1 = user2 & domain1 = domain2"
+// lemma BrowserSessionBinding[reuse,use_induction]:
+//   "   All user1 user2 domain1 domain2 sess #x #y.
+//         UseBrowserSession(user1, domain1, sess) @ #x
+//         & GenBrowserSession(user2, domain2, sess) @ #y
+//   ==> user1 = user2 & domain1 = domain2"
 
-lemma BrowserSessionUnique[reuse,use_induction]:
-  "   All user1 user2 domain1 domain2 sess #x #y.
-        GenBrowserSession(user1, domain1, sess) @ #x
-        & GenBrowserSession(user2, domain2, sess) @ #y
-  ==> #x = #y"
+// lemma BrowserSessionUnique[reuse,use_induction]:
+//   "   All user1 user2 domain1 domain2 sess #x #y.
+//         GenBrowserSession(user1, domain1, sess) @ #x
+//         & GenBrowserSession(user2, domain2, sess) @ #y
+//   ==> #x = #y"
 
-lemma UsernamesUnique[reuse]:
-  "All userA userB idp username pw1 pw2 #a #b.
-      ClaimUsername(userA, idp, username, pw1) @ #a
-      & ClaimUsername(userB, idp, username, pw2) @ #b
-  ==> (#a = #b & userA = userB)
-      | (Ex sk #t. CompromisedDomain(idp, sk) @ #t)"
+// lemma UsernamesUnique[reuse]:
+//   "All userA userB idp username pw1 pw2 #a #b.
+//       ClaimUsername(userA, idp, username, pw1) @ #a
+//       & ClaimUsername(userB, idp, username, pw2) @ #b
+//   ==> (#a = #b & userA = userB)
+//       | (Ex sk #t. CompromisedDomain(idp, sk) @ #t)"
 
-lemma UsernamesServerConfirmed[reuse]:
-  "All user idp username pw #t. ClaimUsername(user, idp, username, pw) @ #t
-  ==> (Ex #x. UsernameServer(idp, username, pw) @ #x)
-      | (Ex sk #x. CompromisedDomain(idp, sk) @ #x)"
+// lemma UsernamesServerConfirmed[reuse]:
+//   "All user idp username pw #t. ClaimUsername(user, idp, username, pw) @ #t
+//   ==> (Ex #x. UsernameServer(idp, username, pw) @ #x)
+//       | (Ex sk #x. CompromisedDomain(idp, sk) @ #x)"
 
-lemma PasswordsConfidential[reuse]:
-  "All user idp username pw #t. UsernameApp(user, idp, username, pw) @ #t
-  ==> not (Ex #x. !KU(pw) @ #x)
-      | (Ex sk #x. CompromisedDomain(idp, sk) @ #x)
-      | (Ex someone #x. CompromisedAccount(someone, idp, username) @ #x)"
+// lemma PasswordsConfidential[reuse]:
+//   "All user idp username pw #t. UsernameApp(user, idp, username, pw) @ #t
+//   ==> not (Ex #x. !KU(pw) @ #x)
+//       | (Ex sk #x. CompromisedDomain(idp, sk) @ #x)
+//       | (Ex someone #x. CompromisedAccount(someone, idp, username) @ #x)"
 
-lemma SignalKeysUnique[reuse]:
-  "All userA userB sk #a #b.
-      ClaimSignalKey(userA, sk) @ #a
-      & ClaimSignalKey(userB, sk) @ #b
-  ==> (#a = #b & userA = userB)
-      | (Ex signal sk #t1 #t2. CompromisedDomain(signal, sk) @ #t1
-          & IsSignal(signal) @ #t2)"
+// lemma MessagingKeysUnique[reuse]:
+//   "All userA userB sk #a #b.
+//       ClaimMessagingKey(userA, sk) @ #a
+//       & ClaimMessagingKey(userB, sk) @ #b
+//   ==> (#a = #b & userA = userB)
+//       | (Ex messaging sk #t1 #t2. CompromisedDomain(messaging, sk) @ #t1
+//           & IsMessaging(messaging) @ #t2)"
 
 rule OIDCIdPIssueCode:
-  [ St_OIDCServer_Auth($IdP, ~sess, hash, nonce, code_challenge)
-  , In(tlsClientMsg(~sess, cert(~IdPKey), <'login', $Username, pw>))
-  , !IdPAccountServer($IdP, $Username, pw), !IdPLtk($IdP, sk)
-  , !Domain($IdP, ~IdPKey), !SignalAppDomain($IdP, ~signalApp)
-  , Fr(~code) ]
+  [ !IdP($IdP)
+  , !IdPAccount($User, $IdP, $Username, pw)
+  , Fr(~code), Fr(~sess2)
+  , St_OIDCServer_Auth($IdP, $Client, $RedirectURL, ~sess, hash, nonce, code_challenge)
+  , TLSServer_In(~sess, $IdP, <'login', $Username, pw>) ]
   --[ IdPIssueCode($IdP, $Username, ~code)
     , IsPW(pw)
-    , IsNonce(nonce)
+    , IsCode(~code)
+    , MustBeNonce(nonce)
     , GenCode($IdP, ~code) ]->
-  [ Out(browserLaunch(~sess, cert(~signalApp), <'code', ~code, nonce>))
-  , St_OIDCIdP_Code($IdP, $Username, ~code, hash, nonce, code_challenge) ]
+  [ TLSClient_Out(~sess2, $RedirectURL, <'code', ~code, nonce>)
+  , St_OIDCIdP_Code($IdP, $Username, $Client, ~code, hash, nonce, code_challenge) ]
 
-lemma IsPW[reuse]:
-  "All pw #x. IsPW(pw) @ #x
-  ==>   (Ex u i un #y. UsernameApp(u, i, un, pw) @ #y)
-      | (Ex #y. !KU(pw) @ #y)"
+// lemma IsPW[reuse]:
+//   "All pw #x. IsPW(pw) @ #x
+//   ==>   (Ex u i un #y. UsernameApp(u, i, un, pw) @ #y)
+//       | (Ex #y. !KU(pw) @ #y)"
 
-lemma UserAccountRequiresSignUp[reuse]:
-  "All u i un pw #x. ClaimUsername(u, i, un, pw) @ #x
-  ==>   (Ex #y. UsernameApp(u, i, un, pw) @ #y)
-      | (Ex d #y. CompromisedDomain(i, d) @ #y)"
+// lemma UserAccountRequiresSignUp[reuse]:
+//   "All u i un pw #x. ClaimUsername(u, i, un, pw) @ #x
+//   ==>   (Ex #y. UsernameApp(u, i, un, pw) @ #y)
+//       | (Ex d #y. CompromisedDomain(i, d) @ #y)"
 
 rule OIDCAppCodeRedirect:
-  // Do not pattern match who the browser session was initiated for. The Signal
+  // Do not pattern match who the browser session was initiated for. The Messaging
   // app cannot verify this. It is only critical that the adversary could not
   // choose the session.
-  [ Browser($Prover, drop, ~sess)
-  , In(browserLaunch(~sess, cert(~signalApp), <'code', code, nonce>))
-  , !SignalAppDomain($IdP, ~signalApp)
-  , !Domain($IdP, ~IdPKey)
-  , SessionStore($Prover, nonce, <$IdP, hash, salt, code_verifier>)
-  , Fr(~sessPost) ]
+  [ !RedirectURL($IdP, $App, $RedirectURL), !IdP($IdP)
+  , !MessagingApp($App)
+  , Fr(~sessPost)
+  , SessionStore($Prover, nonce, <$IdP, verifier, hash, salt, code_verifier>)
+  , TLSServer_In(~sess, $RedirectURL, <'code', code, nonce>) ]
   --[ AppReceiveCode($Prover, $IdP, code)
     , SelfIssued($Prover, nonce)
     , Neq(nonce, 'null')
-    , IsCode(code) ]->
-  [ Out(tlsClientMsg(~sessPost, cert(~IdPKey), <'token_req', code, code_verifier>))
-  , St_OIDCApp_CodeReq($Prover, $IdP, ~sessPost, hash, salt, code)
+    , MustBeCode(code) ]->
+  [ TLSClient_Out(~sessPost, $IdP, <'token_req', code, code_verifier>)
+  , St_OIDCApp_CodeReq($Prover, $IdP, verifier, ~sessPost, hash, salt, code)
   , SessionStore($Prover, 'null', 'null') ]
 
 rule OIDCIdPTokenIssue:
-  let tokenBody = <$IdP, $Username, nonce, hash>
+  let tokenBody = <$IdP, $Client, $Username, nonce, hash>
       token = <tokenBody, sign(tokenBody, sk)>
   in
-  [ In(tlsClientMsg(~sess, cert(~IdPKey), <'token_req', code, code_verifier>))
-  , !Domain($IdP, ~IdPKey)
-  , !IdPLtk($IdP, sk)
-  , St_OIDCIdP_Code($IdP, $Username, code, hash, nonce, code_challenge) ]
+  [ !IdPLtk($IdP, sk)
+  , St_OIDCIdP_Code($IdP, $Username, $Client, code, hash, nonce, code_challenge)
+  , TLSServer_In(~sess, $IdP, <'token_req', code, code_verifier>) ]
   --[ Eq(s256(code_verifier), code_challenge)
     , IdPIssueToken(token)
-    , IsToken(token)
+    , MustBeToken(token)
     , UseCode(code)
     , UseCodeVerifierFor(code_verifier, $IdP) ]->
-  [ Out(tlsServerMsg(~sess, ~IdPKey, <'token', token>)) ]
+  [ TLSServer_Out(~sess, $IdP, <'token', token>) ]
 
-lemma CodeVerifierSecrecy[reuse]:
-  "   All verifier idp #x #y.
-        UseCodeVerifierFor(verifier, idp) @ #x
-        & GenerateCodeVerifierFor(verifier, idp) @ #y
-  ==> not (Ex #z. !KU(verifier) @ #z)
-      | (Ex domain #z. CompromisedDomain(idp, domain) @ #z)"
+// lemma CodeVerifierSecrecy[reuse]:
+//   "   All verifier idp #x #y.
+//         UseCodeVerifierFor(verifier, idp) @ #x
+//         & GenerateCodeVerifierFor(verifier, idp) @ #y
+//   ==> not (Ex #z. !KU(verifier) @ #z)
+//       | (Ex domain #z. CompromisedDomain(idp, domain) @ #z)"
 
-restriction Neq:
-  "All a b #x. Neq(a, b) @ #x ==> not (a = b)"
-
-// This sources lemma combines technically two, but they need to assist each
+// This sources lemma combines multiple in spirit, but they need to assist each
 // other in the proof, hence, they are combined.
 lemma TokenFormatAndOTPLearning[sources]:
-  "(
-    // First lemma: All tokens have a certain structure.
-    All token #i.
-          IsToken(token) @ #i
-      ==> (Ex first second user idp nonce hashed sk.
-          token = <first, second>
-          & first = <idp, user, nonce, hashed>
-          & ((Ex #h. !KU(idp) @ #h & #h < #i) | (Ex sk #h. ClaimIdPKey(idp, sk) @ #h))
-          & ((Ex #h. !KU(user) @ #h & #h < #i) | (Ex party pw #h. ClaimUsername(party, idp, user, pw) @ #h))
+  "(All token #i.
+        MustBeToken(token) @ #i
+    ==> (Ex first second user idp client nonce hashed sk.
+            token = <first, second>
+          & first = <idp, client, user, nonce, hashed>
+          & ((Ex #h. !KU(idp) @ #h & #h < #i) | (Ex #h. IsIdP(idp) @ #h))
+          & ((Ex #h. !KU(client) @ #h & #h < #i) | (Ex #h. IsClient(client) @ #h))
+          & ((Ex #h. !KU(user) @ #h & #h < #i) | (Ex #h. IsUser(user) @ #h))
           & ((Ex #h. !KU(nonce) @ #h & #h < #i) | (Ex #h. GenNonce(nonce) @ #h))
           & ((Ex #h. !KU(hashed) @ #h & #h < #i) | (Ex fp salt. hashed = h(fp, salt)))
-          & second = sign(first, sk)
-        )
-  ) & (
-    All nonce #i.
-          IsNonce(nonce) @ #i
-      ==> ((Ex #h. !KU(nonce) @ #h & #h < #i) | (Ex #h. GenNonce(nonce) @ #h))
-  ) & (
-    All code #i.
-          IsCode(code) @ #i
-      ==> ((Ex #h. !KU(code) @ #h & #h < #i) | (Ex idp #h. GenCode(idp, code) @ #h))
-  ) & (
-    // Second lemma: All OTP responses are a challenge.
-    All chall #i.
-          OTPRespond(chall) @ #i
-      ==> (
-        (Ex #j. OTPChallenge(chall) @ #j & #j < #i)
-        | (Ex #j. !KU(chall) @ #j & #j < #i)
-      )
-  ) & (
-    All ltk #i.
-          ShareSignalKey(ltk) @ #i
-      ==> (
-        (Ex sk #j. IsSignalKey(sk) @ #j & ltk = pk(sk))
-        | (Ex #j. !KU(ltk) @ #j & #j < #i)
-      )
-  )"
+          & second = sign(first, sk))
+  ) & (All nonce #i.
+        MustBeNonce(nonce) @ #i
+    ==> ( (Ex #h. !KU(nonce) @ #h & #h < #i)
+        | (Ex #h. GenNonce(nonce) @ #h)))
+  & (All code #i.
+        MustBeCode(code) @ #i
+    ==> ( (Ex #h. !KU(code) @ #h & #h < #i)
+        | (Ex #h. IsCode(code) @ #h)))
+  & (All chall #i.
+        MustBeOTP(chall) @ #i
+    ==> ( (Ex #j. IsOTP(chall) @ #j & #j < #i)
+      | (Ex #j. !KU(chall) @ #j & #j < #i)))
+  & (All ltk #i.
+        MustBeMessagingKey(ltk) @ #i
+    ==> ( (Ex sk #j. IsMessagingKey(sk) @ #j & ltk = pk(sk))
+      | (Ex #j. !KU(ltk) @ #j & #j < #i)))"
 
 rule OIDCTokenForward:
-  let body = <$IdP, username, nonce, hash>
+  let body = <$IdP, $App, username, nonce, hash>
       fp = fingerprint(<pk(skProver), pkVerifier>)
       token = <body, signature>
   in
-  [ St_OIDCApp_CodeReq($Prover, $IdP, ~sessPost, hash, salt, code)
-  , !Domain($IdP, ~IdPKey)
-  , !SignalDomain(~signal)
-  , In(tlsServerMsg(~sess1, ~IdPKey, <'idp_pk_response', pkIdP>))
-  , In(tlsServerMsg(~sess2, ~signal, <'signal_pk_response', phone, pkVerifier>))
+  [ !IdP($IdP), !MessagingApp($App)
+  , !UseMessagingKeyFor($Prover, verifier, pkVerifier)
+  , !UseIdPKey($Prover, $IdP, pkIdP)
+  , !MessagingLtkUser($Prover, $ProverPhone, skProver)
+  , St_OIDCApp_CodeReq($Prover, $IdP, verifier, ~sessPost, hash, salt, code)
   // We do not check the nonce in the ID token. This is to highlight that the
   // inclusion of a true nonce in the ID token is not strictly necessary in the
   // protocols design.
-  , In(tlsServerMsg(~sessPost, ~IdPKey, <'token', <<$IdP, username, nonce, hash>, signature>>))
-  , !SignalLtkApp($Prover, skProver) ]
+  , TLSClient_In(~sessPost, $IdP, <'token', <<$IdP, $App, username, nonce, hash>, signature>>) ]
   --[ Eq(h(fp, salt), hash)
     , Eq(verify(signature, body, pkIdP), true)
     , Forward($Prover, token)
-    , IsToken(token)
+    , MustBeToken(token)
+    , MustBeCode(code)
     , UsedCode(code) ]->
-  [ Out(signalMsg(skProver, pkVerifier, <'fwd_token', token, salt>))
+  [ SendAsTo($Prover, verifier, <'fwd_token', token, salt>)
   // Sending the code models that the adversary can access the authorization
   // response after the fact.
   , Out(code) ]
 
-lemma CodeIsSingleUse[use_induction,reuse]:
-  " All idp code #a #b #x #y. GenCode(idp, code) @ #a & UsedCode(code) @ #b
-      & UseCode(code) @ #x & UseCode(code) @ #y
-    ==> #x = #y
-      | (Ex domain #x. CompromisedDomain(idp, domain) @ #x)
-      | (Ex signalApp domain #x #y. IsSignalAppFor(idp, signalApp) @ #x
-        & CompromisedDomain(signalApp, domain) @ #y)"
+// lemma CodeIsSingleUse[use_induction,reuse]:
+//   " All idp code #a #b #x #y. GenCode(idp, code) @ #a & UsedCode(code) @ #b
+//       & UseCode(code) @ #x & UseCode(code) @ #y
+//     ==> #x = #y
+//       | (Ex domain #x. CompromisedDomain(idp, domain) @ #x)
+//       | (Ex messagingApp domain #x #y. IsMessagingAppFor(idp, messagingApp) @ #x
+//         & CompromisedDomain(messagingApp, domain) @ #y)"
 
 rule OIDCTokenReceive:
-  let token = <<IdP, username, nonce, hash>, signature>
+  let body = <$IdP, $App, username, nonce, hash>
+      fp = fingerprint(<pkSender, pk(skVerifier)>)
   in
-  [ !SignalLtkApp($Verifier, skVerifier)
-  , In(signalMsg(skSender, pk(skVerifier), <'fwd_token', <<IdP, username, nonce, hash>, signature>, salt>))
-  , !Domain(IdP, ~IdPKey) ]
-  -->
-  [ St_OIDCVerifier($Verifier, pk(skSender), skVerifier, token, salt) ]
-
-rule OIDCTokenVerify:
-  let body = <IdP, username, nonce, hash>
-      fp = fingerprint(<pkProver, pk(skVerifier)>)
-  in
-  [ St_OIDCVerifier($Verifier, pkProver, skVerifier, <<IdP, username, nonce, hash>, signature>, salt)
-  , !Domain(IdP, ~IdPKey)
-  , In(tlsServerMsg(~sess, ~IdPKey, <'idp_pk_response', pkIdP>)) ]
+  [ !MessagingLtkUser($Verifier, $VerifierPhone, skVerifier)
+  , !MessagingApp($App)
+  , !UseIdPKey($Verifier, $IdP, pkIdP)
+  , E2EE_In(pkSender, pk(skVerifier), <'fwd_token', <body, signature>, salt>) ]
   --[ Eq(h(fp, salt), hash)
     , Eq(verify(signature, body, pkIdP), true)
     , DidNotIssueSelf($Verifier, nonce)
-    , AssociateAs(pkProver, IdP, username, pk(skVerifier)) ]->
+    , AssociateAs($Verifier, pkSender, $IdP, username)]->
   []
 
 restriction CheckNonceReplay:
@@ -433,38 +272,26 @@ restriction CheckNonceReplay:
       DidNotIssueSelf(verifier, nonce) @ #t1
   ==> (not Ex #t2. SelfIssued(verifier, nonce) @ #t2)"
 
-restriction Equality:
-  "All x y #i. Eq(x, y) @ #i ==> x = y"
-
-lemma SocialAuthentication:
-  "   All pkI idp username pkV prover accountHolder pw skI #i #j #k.
-        AssociateAs(pkI, idp, username, pkV) @ #i
-        & ClaimSignalKey(prover, skI) @ #j & pkI = pk(skI)
-        & ClaimUsername(accountHolder, idp, username, pw) @ #k
-  ==> (Ex salt hash nonce code_challenge sess #k #l #m.
-        prover = accountHolder
-        & OIDCRequest(prover, idp, pkV, salt, hash, nonce, code_challenge) @ #k & #k < #i
-        & AuthenticationRequest(sess, idp, hash, nonce, code_challenge) @ #l & #l < #i
-        & AuthenticationResponse(sess, prover, idp, username) @ #m & #m < #i)
-      | (Ex domain #k. CompromisedDomain(idp, domain) @ #k)
-      | (Ex signalApp domain #k #l. IsSignalAppFor(idp, signalApp) @ #k
-        & CompromisedDomain(signalApp, domain) @ #l)
-      | (Ex party #k. CompromisedAccount(party, idp, username) @ #k)"
-
 lemma Executability:
   exists-trace
-  "Ex pkI idp username pkV prover skI accountHolder pw salt hash nonce
-    code_challenge sess #i #j #k #l #m #n.
-    AssociateAs(pkI, idp, username, pkV) @ #i
-    & ClaimSignalKey(prover, skI) @ #j & pkI = pk(skI)
-    & ClaimUsername(accountHolder, idp, username, pw) @ #k
-    & prover = accountHolder
-    & OIDCRequest(prover, idp, pkV, salt, hash, nonce, code_challenge) @ #l & #l < #i
-    & AuthenticationRequest(sess, idp, hash, nonce, code_challenge) @ #m & #m < #i
-    & AuthenticationResponse(sess, prover, idp, username) @ #n & #n < #i
-    & (not Ex d s #x. CompromisedDomain(d, s) @ #x)
-    & (not Ex u s #x. CompromisedSignal(u, s) @ #x)
-    & (not Ex u idp n #x. CompromisedAccount(u, idp, n) @ #x)
-    & (not Ex #x. AdversaryLinkClick() @ #x)"
+  "Ex verifier pkProver idp acc prover skProver pw #t1 #t2 #t3.
+      AssociateAs(verifier, pkProver, idp, acc) @ #t1
+    & ClaimMessagingKey(prover, skProver) @ #t2 & pkProver = pk(skProver)
+    & Username(prover, idp, acc, pw) @ #t3
+    & (not Ex #x. SomeCompromise() @ #x)"
+
+lemma SocialAuthentication:
+  "All v proverPhone verifierPhone m1 idp acc m2 #t1 #t2 #t3.
+        ( AssociateAs(v, proverPhone, idp, acc) @ #t1
+        & ReceiveMessaging(proverPhone, verifierPhone, m1) @ #t2
+        & ReceiveIdP(idp, acc, m2) @ #t3)
+    ==> ( (Ex s1 s2 #x1 #x2.
+          ( SendMessaging(proverPhone, verifierPhone, m1) @ #x1 & Sender(s1) @ #x1
+          & SendIdP(idp, acc, m2) @ #x2 & Sender(s2) @ #x2
+          & s1 = s2))
+        | (Ex #x. CompromisedIdP(idp) @ #x)
+        | (Ex #x. CompromisedDomain(idp) @ #x)
+        | (Ex p #x. CompromisedAccount(p, idp, acc) @ #x)
+        | (Ex p k #x. CompromisedMessaging(p, proverPhone, k) @ #x))"
 
 end

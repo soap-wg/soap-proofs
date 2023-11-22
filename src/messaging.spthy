@@ -1,0 +1,139 @@
+rule KeyServer:
+  [ !Domain($Domain) ]
+  --[ OnlyOnce('key_server')
+    , IsKeyServer($Domain) ]->
+  [ !KeyServer($Domain) ]
+
+rule E2EEOut:
+  [ E2EE_Out(pkSender, pkReceiver, msg) ]
+  -->
+  [ !E2EE(pkSender, pkReceiver, msg) ]
+
+rule E2EEAdversaryOut:
+  [ In(skSender), In(pkReceiver), In(msg) ]
+  -->
+  [ !E2EE(pk(skSender), pkReceiver, msg) ]
+
+rule E2EEIn:
+  [ !E2EE(pkSender, pkReceiver, msg) ]
+  -->
+  [ E2EE_In(pkSender, pkReceiver, msg) ]
+
+rule E2EEAdversaryIn:
+  [ In(skReceiver)
+  , !E2EE(pkSender, pk(skReceiver), msg) ]
+  -->
+  [ Out(msg) ]
+
+rule MessagingRegister:
+  [ Fr(~sk), Fr(~sess)
+  , !Phone($A, $Number), !KeyServer($KeyServer) ]
+  --[ IsSession(~sess)
+    , IsMessagingKey(~sk) ]->
+  [ TLSClient_Out(~sess, $KeyServer, <'msg_signup_req', $Number, pk(~sk)>)
+  , Out(pk(~sk))
+  , St_MessagingReg_App($A, $Number, ~sess, ~sk) ]
+
+rule MessagingChallenge:
+  [ Fr(~challenge)
+  , !KeyServer($Server)
+  , TLSServer_In(~sess, $Server, <'msg_signup_req', $Number, ltk>) ]
+  --[ IsOTP(~challenge) ]->
+  [ SMS_Out($Number, ~challenge)
+  , St_SigReg_Server(~sess, $Number, ltk, ~challenge) ]
+
+rule MessagingRespond:
+  [ !KeyServer($Server), St_MessagingReg_App($A, $Number, ~sess, sk)
+  , SMS_In($Number, challenge) ]
+  --[ MustBeOTP(challenge) ]->
+  [ TLSClient_Out(~sess, $Server, <'otp_respond', challenge>)
+  , St_MessagingReg_AppWait($A, $Number, ~sess, sk) ]
+
+rule MessagingAck:
+  [ !KeyServer($Server)
+  , St_SigReg_Server(~sess, $Number, ltk, challenge)
+  , TLSServer_In(~sess, $Server, <'otp_respond', challenge>) ]
+  --[ MessagingKeyServer($Number, ltk) ]->
+  [ !MessagingLtkServer($Number, ltk)
+  , TLSServer_Out(~sess, $Server, 'msg_signup_ack') ]
+
+restriction KeysUnique:
+  "All phone ltk1 ltk2 #a #b. MessagingKeyServer(phone, ltk1) @ #a
+      & MessagingKeyServer(phone, ltk2) @ #b
+  ==> #a = #b & ltk1 = ltk2"
+
+rule MessagingFin:
+  [ !KeyServer($Server)
+  , St_MessagingReg_AppWait($A, $Number, ~sess, sk)
+  , TLSClient_In(~sess, $Server, 'msg_signup_ack') ]
+  --[ ClaimMessagingKey($A, sk) ]->
+  [ !MessagingLtkUser($A, $Number, sk) ]
+
+rule MessagingCompromise:
+  [ !MessagingLtkUser($A, $Number, ~sk) ]
+  --[ CompromisedMessaging($A, $Number, pk(~sk))
+    , SomeCompromise() ]->
+  [ Out(~sk) ]
+
+rule MessagingKeyRequest:
+  [ !MessagingLtkServer($Number, ltk)
+  , !KeyServer($Server)
+  , TLSServer_In(~sess, $Server, <'msg_key_req', $Number>) ]
+  --[ MustBeMessagingKey(ltk) ]->
+  [ TLSServer_Out(~sess, $Server, <'msg_key_resp', $Number, ltk>) ]
+
+rule ObtainKey:
+  [ Fr(~sess), !KeyServer($Server) ]
+  --[ IsSession(~sess) ]->
+  [ TLSClient_Out(~sess, $Server, <'msg_key_req', $Phone>)
+  , St_KeyReq($A, $Phone, ~sess) ]
+
+rule ObtainKeyFin:
+  [ !KeyServer($Server)
+  , St_KeyReq($A, $Phone, ~sess)
+  , TLSClient_In(~sess, $Server, <'msg_key_resp', $Phone, ltk>) ]
+  -->
+  [ !UseMessagingKeyFor($A, $Phone, ltk) ]
+
+rule SendInterface:
+  [ Fr(~m) ]
+  -->
+  [ SendAsTo($A, $Phone, ~m) ]
+
+rule MessagingSend:
+  [ SendAsTo($A, $PeerPhone, m)
+  , !MessagingLtkUser($A, $MyPhone, ~sk), !UseMessagingKeyFor($A, $PeerPhone, ltk) ]
+  --[ SendMessaging($MyPhone, $PeerPhone, m)
+    , Sender($A)
+    , SendTo($PeerPhone, 'messaging', m) ]->
+  [ E2EE_Out(pk(~sk), ltk, m) ]
+
+rule MessagingReceive:
+  [ !MessagingLtkUser($A, $MyPhone, ~skr), !UseMessagingKeyFor($A, $PeerPhone, pkPeer)
+  , E2EE_In(pkPeer, pk(~skr), m) ]
+  --[ ReceiveMessaging($PeerPhone, $MyPhone, m) ]->
+  []
+
+lemma MessagingExecutability:
+  exists-trace
+  "Ex senderPhone myPhone m #t.
+      ReceiveMessaging(senderPhone, myPhone, m) @ #t
+    & (not Ex #x. SomeCompromise() @ #x)"
+
+predicates: KeyServerCompromise() <=> Ex d #x #y. IsKeyServer(d) @ #x & CompromisedDomain(d) @ #y
+
+lemma MessagingSecrecy:
+  "All receiverPhone m #t.
+        SendTo(receiverPhone, 'messaging', m) @ #t
+    ==> ( (not Ex #x. K(m) @ #x)
+        | KeyServerCompromise()
+        | (Ex #x. SMSLeak() @ #x)
+        | (Ex r k #x. CompromisedMessaging(r, receiverPhone, k) @ #x))"
+
+lemma MessagingSenderInvariance:
+  "All senderPhone myPhone m #t.
+        ( ReceiveMessaging(senderPhone, myPhone, m) @ #t)
+    ==> ( (Ex #x. SendMessaging(senderPhone, myPhone, m) @ #x)
+        | KeyServerCompromise()
+        | (Ex #x. SMSLeak() @ #x)
+        | (Ex s k #x. CompromisedMessaging(s, senderPhone, k) @ #x))"

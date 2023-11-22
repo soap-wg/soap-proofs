@@ -60,8 +60,8 @@ if argv[1] == 'TokenFormatAndOTPLearning':
     '\'code\'',
     '\'token_req\'',
     '\'token\'',
-    re.compile('tlsClientMsg.+<\'signal_req\', \$Number, ltk>'),
-    'tlsClientMsg',  # lowest priority
+    re.compile('TLSServer_In.+<\'signal_req\', \$Number, ltk>'),
+    'TLSServer_In',  # lowest priority
   ], lines)
 elif argv[1] in [
   'UsernamesUnique',
@@ -107,7 +107,7 @@ elif argv[1] == 'SocialAuthentication':
     'St_',
     '!Domain',
     re.compile(r'GenBrowserSession\(.+,.+, ~(IdPKey|sessPost|code|domain|signalApp)'),
-    re.compile(r'tlsClientMsg\(~(IdPKey|sessPost|code|domain|signalApp)\.?\d*'),
+    re.compile(r'TLSServer_In\(~(IdPKey|sessPost|code|domain|signalApp)\.?\d*'),
     '!KU( ~IdPKey',
     '!KU( ~domain',
     '!KU( ~sessPost',
@@ -137,7 +137,7 @@ elif argv[1] == 'CodeVerifierSecrecy':
     '∀',
     '!KU( ~IdPKey )',
     re.compile(r'GenBrowserSession\(.+,.+,\s*~(IdPKey|n)'),
-    re.compile(r'tlsClientMsg\(~(IdPKey|n),.+,\s*<\'oidc_req\''),
+    re.compile(r'TLSServer_In\(~(IdPKey|n),.+,\s*<\'oidc_req\''),
     '\'token_req\'',
     '!KU( ~n )',
   ], lines)
@@ -149,14 +149,6 @@ elif argv[1] == 'Executability':
     return matchAgainstList(deferList, lines)
 
   match = defer([
-    re.compile('!KU\( tls'),
-    re.compile('!KU\( browser'),
-    re.compile('!KU\( [^~]'),
-    re.compile('^!'),
-    '∃',
-    '∀',
-    'GenBrowserSession(',
-    'Browser(',
     'SessionStore(',
   ], lines)
 
