@@ -1,7 +1,6 @@
 rule IdPSetup:
   [ !Domain($IdP), Fr(~sk) ]
-  --[ ClaimIdPKey($IdP, ~sk)
-    , IsIdP($IdP) ]->
+  --[ ClaimIdPKey($IdP, ~sk) ]->
   [ !IdP($IdP), !IdPLtk($IdP, ~sk)
   , Out(pk(~sk)) ]
 
@@ -31,8 +30,7 @@ rule IdPKeyObtain:
 
 rule IdPSignUp:
   [ Fr(~pw), !IdP($IdP) ]
-  --[ Username($A, $IdP, $Username, ~pw)
-    , IsUser($Username) ]->
+  --[ Username($A, $IdP, $Username, ~pw) ]->
   [ !IdPAccount($A, $IdP, $Username, ~pw) ]
 
 restriction AccountsUnique:

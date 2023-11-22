@@ -10,7 +10,7 @@ heuristic: o "./oracle.py"
 
 rule Client:
   []
-  --[ IsClient($Client) ]->
+  -->
   [ !Client($App) ]
 
 rule MessagingApp:
@@ -197,9 +197,6 @@ lemma TokenFormatAndOTPLearning[sources]:
     ==> (Ex first second user idp client nonce hashed sk.
             token = <first, second>
           & first = <idp, client, user, nonce, hashed>
-          & ((Ex #h. !KU(idp) @ #h & #h < #i) | (Ex #h. IsIdP(idp) @ #h))
-          & ((Ex #h. !KU(client) @ #h & #h < #i) | (Ex #h. IsClient(client) @ #h))
-          & ((Ex #h. !KU(user) @ #h & #h < #i) | (Ex #h. IsUser(user) @ #h))
           & ((Ex #h. !KU(nonce) @ #h & #h < #i) | (Ex #h. GenNonce(nonce) @ #h))
           & ((Ex #h. !KU(hashed) @ #h & #h < #i) | (Ex fp salt. hashed = h(fp, salt)))
           & second = sign(first, sk))
@@ -221,7 +218,7 @@ lemma TokenFormatAndOTPLearning[sources]:
       | (Ex #j. !KU(ltk) @ #j & #j < #i)))"
 
 rule OIDCTokenForward:
-  let body = <$IdP, $App, username, nonce, hash>
+  let body = <$IdP, $App, $Username, nonce, hash>
       fp = fingerprint(<pk(skProver), pkVerifier>)
       token = <body, signature>
   in
@@ -233,7 +230,7 @@ rule OIDCTokenForward:
   // We do not check the nonce in the ID token. This is to highlight that the
   // inclusion of a true nonce in the ID token is not strictly necessary in the
   // protocols design.
-  , TLSClient_In(~sessPost, $IdP, <'token', <<$IdP, $App, username, nonce, hash>, signature>>) ]
+  , TLSClient_In(~sessPost, $IdP, <'token', <<$IdP, $App, $Username, nonce, hash>, signature>>) ]
   --[ Eq(h(fp, salt), hash)
     , Eq(verify(signature, body, pkIdP), true)
     , Forward($Prover, token)
