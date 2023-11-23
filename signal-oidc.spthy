@@ -162,10 +162,10 @@ rule OIDCIdPTokenIssue[color=#B4D9EF]:
   , St_OIDCIdP_Code($IdP, $Username, $Client, code, hash, nonce, code_challenge)
   , TLSServer_In('POST', ~sess, $IdP, <'token_req', code, code_verifier>) ]
   --[ Eq(s256(code_verifier), code_challenge)
-    , IdPIssueToken(token)
+    , IssueTokenForCode($IdP, ~sess, code)
     , MustBeToken(token)
     , UseCode($IdP, $Client, code)
-    , UseCodeVerifierFor(code_verifier, $IdP) ]->
+    , UseCodeVerifierFor($IdP, code_verifier) ]->
   [ TLSServer_Out('POST', ~sess, $IdP, <'token', token>) ]
 
 lemma CodeSecrecy[reuse]:
@@ -173,13 +173,13 @@ lemma CodeSecrecy[reuse]:
         ( UseCode(idp, client, code) @ #t1
         & IsMessagingApp(client) @ #t2
         & KU(code) @ #t3)
-    ==> ( (Ex #x. UsedCode(code) @ #x & #x < #t3)
+    ==> ( (Ex #x. UsedCode(idp, code) @ #x & #x < #t3)
         | (Ex url #x #y. IsRedirectURL(idp, client, url) @ #x & CompromisedDomain(url) @ #y)
         | (Ex #x. CompromisedDomain(idp) @ #x))"
 
 lemma CodeVerifierSecrecy[reuse]:
   "   All verifier idp #x #y.
-        UseCodeVerifierFor(verifier, idp) @ #x
+        UseCodeVerifierFor(idp, verifier) @ #x
         & GenerateCodeVerifierFor(verifier, idp) @ #y
   ==> not (Ex #z. KU(verifier) @ #z)
       | (Ex #z. CompromisedDomain(idp) @ #z)"
@@ -228,22 +228,31 @@ rule OIDCTokenForward[color=#B4D9EF]:
   , TLSClient_In('POST', ~sessPost, $IdP, <'token', <<$IdP, $App, $Username, nonce, hash>, signature>>) ]
   --[ Eq(h(fp, salt), hash)
     , Eq(verify(signature, body, pkIdP), true)
+    , GetTokenForCode($IdP, ~sessPost, code)
     , Forward($Prover, token)
     , MustBeToken(token)
     , MustBeCode(code)
-    , UsedCode(code) ]->
+    , UsedCode($IdP, code) ]->
   [ SendAsTo($Prover, $VerifierPhone, <'fwd_token', token, salt>)
   // Sending the code models that the adversary can access the authorization
   // response after the fact.
   , Out(code) ]
 
-// lemma CodeIsSingleUse[use_induction,reuse]:
-//   " All idp code #a #b #x #y. GenCode(idp, code) @ #a & UsedCode(code) @ #b
-//       & UseCode(code) @ #x & UseCode(code) @ #y
-//     ==> #x = #y
-//       | (Ex domain #x. CompromisedDomain(idp, domain) @ #x)
-//       | (Ex messagingApp domain #x #y. IsMessagingAppFor(idp, messagingApp) @ #x
-//         & CompromisedDomain(messagingApp, domain) @ #y)"
+lemma CodeAgreement[use_induction,reuse]:
+  "All idp sess codeClient codeIdP #t1 #t2.
+          GetTokenForCode(idp, sess, codeClient) @ #t1
+        & IssueTokenForCode(idp, sess, codeIdP) @ #t2
+    ==> ( (codeClient = codeIdP)
+        | (Ex #x. CompromisedDomain(idp) @ #x))"
+
+lemma CodeIsSingleUse[reuse]:
+  "All idp code #a #b.
+        (UsedCode(idp, code) @ #a & UsedCode(idp, code) @ #b)
+    ==> ( #a = #b
+        | (Ex #x. CompromisedDomain(idp) @ #x)
+        | (Ex app url #x #y.
+              IsRedirectURL(idp, app, url) @ #x
+            & CompromisedDomain(url) @ #y))"
 
 rule OIDCTokenReceive[color=#B4D9EF]:
   let body = <$IdP, $App, $Username, nonce, hash>

@@ -41,32 +41,39 @@ def gatherFreshNStream(lines):
   with_fresh = list(filter(bool, map(lambda ln: fresh_reg.match(ln[1]), lines)))
   return map(lambda match: match[1], with_fresh)
 
+nonSessionGoals = [
+    'TLSServer_In( \'GET\', ~sessPost',
+    'TLSClient_In( \'GET\', ~sessPost',
+    re.compile(r'TLS(Server|Client)_In\( \'\w+\', ~(IdPKey|code|domain|signalApp)'),
+]
+
 match = None
 if argv[1] == 'TokenFormatAndOTPLearning':
   match = matchAgainstList([
-    'ClaimUsername',
-    'ClaimIdPKey',
+    'MustBe',
+    '\'oidc_req\'',
+    '\'token\'',
+    '\'code\'',
+    'St_OIDCServer_Auth',
+    'St_OIDCIdP_Code',
+    'St_OIDCApp_CodeReq',
+    '!MessagingLtkServer',
+    'St_SigReg_Server',
     'GenCode',
     'GenNonce',
     '∃',
     '∀',
     '~~>',
-    'St_OIDCServer_Auth',
-    'St_OIDCIdP_Code',
     re.compile(r'SessionStore\(.+nonce'),
-    '\'oidc_req\'',
     '\'login\'',
     '\'auth_req\'',
-    '\'code\'',
     '\'token_req\'',
-    '\'token\'',
     re.compile(r'TLSServer_In.+<\'signal_req\', \$Number, ltk>'),
-    'TLSServer_In',  # lowest priority
+    'TLSServer_In',
   ], lines)
 elif argv[1] in [
   'UsernamesUnique',
   'UsernamesServerConfirmed',
-  'SignalKeysUnique',
 ]:
   match = matchAgainstList([
     '!SignalDomain',
@@ -74,7 +81,6 @@ elif argv[1] in [
     'St_',
     '!KU( ~IdPKey )',
     '\'oidc_req\'',
-    'GenBrowserSession',
     '!KU( ~sess',
   ], lines)
 elif argv[1] == 'PasswordsConfidential':
@@ -84,21 +90,36 @@ elif argv[1] == 'PasswordsConfidential':
     '!KU( ~IdPKey )',
     '!KU( ~n )',
     '\'oidc_req\'',
-    re.compile(r'GenBrowserSession\(.+,.+, ~(IdPKey|n)'),
-    'GenBrowserSession',
+  ], lines)
+elif argv[1] == 'CodeSecrecy':
+  match = matchAgainstList(nonSessionGoals + [
+    re.compile(r'TLSServer_In\( \'GET\', ~sess(\.\d+)?, \$RedirectURL(\.\d+)?, <\'code\''),
+    'St_OIDCIdP_Code(',
+    '!KU( ~code )',
+    '\'token_req\'',
   ], lines)
 elif argv[1] == 'CodeVerifierSecrecy':
   match = matchAgainstList([
     '!Domain',
     '!KU( ~n )',
     '!KU( ~IdPKey )',
-    re.compile(r'GenBrowserSession\(.+,.+, ~(IdPKey|n)'),
     '\'oidc_req\'',
   ], lines)
+elif argv[1] == 'CodeAgreement':
+  match = matchAgainstList(nonSessionGoals + [
+    'last',
+    '!KU( ~sessPost',
+    'codeClient = ~code',
+    'St_OIDCApp_CodeReq',
+    '\'POST\'',
+  ], lines)
 elif argv[1] == 'CodeIsSingleUse':
-  match = matchAgainstList([
-    re.compile(r'#\w\.?\d* < #\w\.?\d*'),
-    'St_',
+  match = matchAgainstList(nonSessionGoals + [
+    'last',
+    re.compile(r'~?code(\.\d+)? = ~code(\.\d+)?'),
+    re.compile(r'TLSServer_In\( \'GET\', ~sess(\.\d+)?, \$RedirectURL(\.\d+)?, <\'code\''),
+    '\'POST\'',
+    'St_OIDCApp_CodeReq',
   ], lines)
 elif argv[1] == 'SocialAuthentication':
   fvars = gatherFreshNStream(lines)
@@ -106,7 +127,6 @@ elif argv[1] == 'SocialAuthentication':
   match = matchAgainstList(list(rs) + [
     'St_',
     '!Domain',
-    re.compile(r'GenBrowserSession\(.+,.+, ~(IdPKey|sessPost|code|domain|signalApp)'),
     re.compile(r'TLSServer_In\(~(IdPKey|sessPost|code|domain|signalApp)\.?\d*'),
     '!KU( ~IdPKey',
     '!KU( ~domain',
