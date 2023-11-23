@@ -1,3 +1,4 @@
 *.aes
 test-goals
 .vscode
+.DS_Store
