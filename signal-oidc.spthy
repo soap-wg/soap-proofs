@@ -24,6 +24,13 @@ rule RedirectURL:
   --[ IsRedirectURL($IdP, $App, $RedirectURL) ]->
   [ !RedirectURL($IdP, $App, $RedirectURL) ]
 
+restriction UniqueRedirectURLs:
+  "All idp1 idp2 url app #t1 #t2 #t3.
+        ( IsMessagingApp(app) @ #t1
+        & IsRedirectURL(idp1, app, url) @ #t2
+        & IsRedirectURL(idp2, app, url) @ #t3)
+    ==> idp1 = idp2"
+
 // Clients need to memorize which query they issued last
 rule InitSessionStore:
   []
