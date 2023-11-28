@@ -71,18 +71,6 @@ if argv[1] == 'TokenFormatAndOTPLearning':
     re.compile(r'TLSServer_In.+<\'signal_req\', \$Number, ltk>'),
     'TLSServer_In',
   ], lines)
-elif argv[1] in [
-  'UsernamesUnique',
-  'UsernamesServerConfirmed',
-]:
-  match = matchAgainstList([
-    '!SignalDomain',
-    '!Domain',
-    'St_',
-    '!KU( ~IdPKey )',
-    '\'oidc_req\'',
-    '!KU( ~sess',
-  ], lines)
 elif argv[1] == 'PasswordsConfidential':
   match = matchAgainstList([
     '!Domain',

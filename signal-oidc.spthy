@@ -93,18 +93,6 @@ rule OIDCAppLogin[color=#B4D9EF]:
   [ TLSClient_Out('GET', ~sess, $IdP, <'login', $Username, ~pw>)
   , Browser($Prover, $IdP, ~sess) ]
 
-// lemma UsernamesUnique[reuse]:
-//   "All userA userB idp username pw1 pw2 #a #b.
-//       ClaimUsername(userA, idp, username, pw1) @ #a
-//       & ClaimUsername(userB, idp, username, pw2) @ #b
-//   ==> (#a = #b & userA = userB)
-//       | (Ex sk #t. CompromisedDomain(idp, sk) @ #t)"
-
-// lemma UsernamesServerConfirmed[reuse]:
-//   "All user idp username pw #t. ClaimUsername(user, idp, username, pw) @ #t
-//   ==> (Ex #x. UsernameServer(idp, username, pw) @ #x)
-//       | (Ex sk #x. CompromisedDomain(idp, sk) @ #x)"
-
 lemma PasswordsConfidential[reuse]:
   "All user idp username pw #t1 #t2.
         ( Username(user, idp, username, pw) @ #t1
