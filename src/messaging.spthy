@@ -28,8 +28,7 @@ rule E2EEAdversaryIn[color=#FF6961]:
 rule MessagingRegister[color=#FDFD96]:
   [ Fr(~sk), Fr(~sess)
   , !Phone($A, $Number), !KeyServer($KeyServer) ]
-  --[ IsSession(~sess)
-    , IsMessagingKey(~sk) ]->
+  --[ IsMessagingKey(~sk) ]->
   [ TLSClient_Out('GET', ~sess, $KeyServer, <'msg_signup_req', $Number, pk(~sk)>)
   , Out(pk(~sk))
   , St_MessagingReg_App($A, $Number, ~sess, ~sk) ]
@@ -66,12 +65,12 @@ rule MessagingFin[color=#FDFD96]:
   [ !KeyServer($Server)
   , St_MessagingReg_AppWait($A, $Number, ~sess, sk)
   , TLSClient_In('GET', ~sess, $Server, 'msg_signup_ack') ]
-  --[ ClaimMessagingKey($A, sk) ]->
+  --[ ClaimMessagingKey($A, $Number, sk) ]->
   [ !MessagingLtkUser($A, $Number, sk) ]
 
 rule MessagingCompromise[color=#FF6961]:
   [ !MessagingLtkUser($A, $Number, ~sk) ]
-  --[ CompromisedMessaging($A, $Number, pk(~sk))
+  --[ CompromisedMessaging($A, pk(~sk))
     , SomeCompromise() ]->
   [ Out(~sk) ]
 
@@ -84,7 +83,7 @@ rule MessagingKeyRequest[color=#9AD5D8]:
 
 rule ObtainKey[color=#9AD5D8]:
   [ Fr(~sess), !KeyServer($Server) ]
-  --[ IsSession(~sess) ]->
+  -->
   [ TLSClient_Out('GET', ~sess, $Server, <'msg_key_req', $Phone>)
   , St_KeyReq($A, $Phone, ~sess) ]
 
@@ -92,7 +91,7 @@ rule ObtainKeyFin[color=#9AD5D8]:
   [ !KeyServer($Server)
   , St_KeyReq($A, $Phone, ~sess)
   , TLSClient_In('GET', ~sess, $Server, <'msg_key_resp', $Phone, ltk>) ]
-  -->
+  --[ GotMessagingKey($Phone, ltk) ]->
   [ !UseMessagingKeyFor($A, $Phone, ltk) ]
 
 rule SendInterface:
@@ -103,7 +102,7 @@ rule SendInterface:
 rule MessagingSend:
   [ SendAsTo($A, $PeerPhone, m)
   , !MessagingLtkUser($A, $MyPhone, ~sk), !UseMessagingKeyFor($A, $PeerPhone, ltk) ]
-  --[ SendMessaging($MyPhone, $PeerPhone, m)
+  --[ SendMessaging(pk(~sk), ltk, m)
     , Sender($A)
     , SendTo($PeerPhone, 'messaging', m) ]->
   [ E2EE_Out(pk(~sk), ltk, m) ]
@@ -111,7 +110,7 @@ rule MessagingSend:
 rule MessagingReceive:
   [ !MessagingLtkUser($A, $MyPhone, ~skr), !UseMessagingKeyFor($A, $PeerPhone, pkPeer)
   , E2EE_In(pkPeer, pk(~skr), m) ]
-  --[ ReceiveMessaging($PeerPhone, $MyPhone, m) ]->
+  --[ ReceiveMessaging(pkPeer, pk(~skr), m) ]->
   []
 
 lemma MessagingExecutability:
@@ -123,17 +122,17 @@ lemma MessagingExecutability:
 predicates: KeyServerCompromise() <=> Ex d #x #y. IsKeyServer(d) @ #x & CompromisedDomain(d) @ #y
 
 lemma MessagingSecrecy:
-  "All receiverPhone m #t.
-        SendTo(receiverPhone, 'messaging', m) @ #t
+  "All receiverKey m #t.
+        SendTo(receiverKey, 'messaging', m) @ #t
     ==> ( (not Ex #x. K(m) @ #x)
         | KeyServerCompromise()
         | (Ex #x. SMSLeak() @ #x)
-        | (Ex r k #x. CompromisedMessaging(r, receiverPhone, k) @ #x))"
+        | (Ex r #x. CompromisedMessaging(r, receiverKey) @ #x))"
 
 lemma MessagingSenderInvariance:
-  "All senderPhone myPhone m #t.
-        ( ReceiveMessaging(senderPhone, myPhone, m) @ #t)
-    ==> ( (Ex #x. SendMessaging(senderPhone, myPhone, m) @ #x)
+  "All senderKey myKey m #t.
+        ( ReceiveMessaging(senderKey, myKey, m) @ #t)
+    ==> ( (Ex #x. SendMessaging(senderKey, myKey, m) @ #x)
         | KeyServerCompromise()
         | (Ex #x. SMSLeak() @ #x)
-        | (Ex s k #x. CompromisedMessaging(s, senderPhone, k) @ #x))"
+        | (Ex s #x. CompromisedMessaging(s, senderKey) @ #x))"

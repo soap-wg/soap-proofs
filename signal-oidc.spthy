@@ -104,13 +104,12 @@ lemma PasswordsConfidential[reuse]:
     ==> ( (Ex #x. CompromisedDomain(idp) @ #x)
         | (Ex someone #x. CompromisedAccount(someone, idp, username) @ #x))"
 
-// lemma MessagingKeysUnique[reuse]:
-//   "All userA userB sk #a #b.
-//       ClaimMessagingKey(userA, sk) @ #a
-//       & ClaimMessagingKey(userB, sk) @ #b
-//   ==> (#a = #b & userA = userB)
-//       | (Ex messaging sk #t1 #t2. CompromisedDomain(messaging, sk) @ #t1
-//           & IsMessaging(messaging) @ #t2)"
+lemma MessagingKeysUnique[reuse]:
+  "All userA userB phoneA phoneB sk #a #b.
+        ClaimMessagingKey(userA, phoneA, sk) @ #a
+      & ClaimMessagingKey(userB, phoneB, sk) @ #b
+  ==> (#a = #b & userA = userB & phoneA = phoneB)
+      | KeyServerCompromise()"
 
 rule OIDCIdPIssueCode[color=#B4D9EF]:
   [ !IdP($IdP)
@@ -265,7 +264,8 @@ rule OIDCTokenReceive[color=#B4D9EF]:
   --[ Eq(h(fp, salt), hash)
     , Eq(verify(signature, body, pkIdP), true)
     , DidNotIssueSelf($Verifier, nonce)
-    , AssociateAs($Verifier, $ProverPhone, $IdP, $Username) ]->
+    , ReceivingKey(pk(skVerifier))
+    , AssociateAs($Verifier, pkProver, $IdP, $Username) ]->
   []
 
 restriction CheckNonceReplay:
@@ -275,24 +275,30 @@ restriction CheckNonceReplay:
 
 lemma Executability:
   exists-trace
-  "Ex verifier pkProver idp acc prover skProver pw #t1 #t2 #t3.
-      AssociateAs(verifier, pkProver, idp, acc) @ #t1
-    & ClaimMessagingKey(prover, skProver) @ #t2 & pkProver = pk(skProver)
-    & Username(prover, idp, acc, pw) @ #t3
+  "Ex verifier proverKey idp acc verifierKey m1 m2 s1 s2
+    #t1 #t2 #t3 #t4 #t5.
+      AssociateAs(verifier, proverKey, idp, acc) @ #t1
+    & ReceiveMessaging(proverKey, verifierKey, m1) @ #t2
+    & ReceiveIdP(idp, acc, m2) @ #t3
+    & SendMessaging(proverKey, verifierKey, m1) @ #t4
+    & Sender(s1) @ #t4
+    & SendIdP(idp, acc, m2) @ #t5
+    & Sender(s2) @ #t5
+    & s1 = s2
     & (not Ex #x. SomeCompromise() @ #x)"
 
 lemma SocialAuthentication:
-  "All v proverPhone verifierPhone m1 idp acc m2 #t1 #t2 #t3.
-        ( AssociateAs(v, proverPhone, idp, acc) @ #t1
-        & ReceiveMessaging(proverPhone, verifierPhone, m1) @ #t2
+  "All v proverKey verifierKey m1 idp acc m2 #t1 #t2 #t3.
+        ( AssociateAs(v, proverKey, idp, acc) @ #t1
+        & ReceiveMessaging(proverKey, verifierKey, m1) @ #t2
         & ReceiveIdP(idp, acc, m2) @ #t3)
     ==> ( (Ex s1 s2 #x1 #x2.
-          ( SendMessaging(proverPhone, verifierPhone, m1) @ #x1 & Sender(s1) @ #x1
+          ( SendMessaging(proverKey, verifierKey, m1) @ #x1 & Sender(s1) @ #x1
           & SendIdP(idp, acc, m2) @ #x2 & Sender(s2) @ #x2
           & s1 = s2))
         | (Ex #x. CompromisedIdP(idp) @ #x)
         | (Ex #x. CompromisedDomain(idp) @ #x)
         | (Ex p #x. CompromisedAccount(p, idp, acc) @ #x)
-        | (Ex p k #x. CompromisedMessaging(p, proverPhone, k) @ #x))"
+        | (Ex p #x. CompromisedMessaging(p, proverKey) @ #x))"
 
 end
