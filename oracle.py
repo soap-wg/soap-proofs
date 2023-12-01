@@ -75,7 +75,7 @@ elif argv[1] == 'PasswordsConfidential':
   match = matchAgainstList([
     '!Domain',
     'St_',
-    '!KU( ~IdPKey )',
+    '!KU( ~idpSk )',
     '!KU( ~n )',
     '\'oidc_req\'',
   ], lines)
@@ -90,7 +90,7 @@ elif argv[1] == 'CodeVerifierSecrecy':
   match = matchAgainstList([
     '!Domain',
     '!KU( ~n )',
-    '!KU( ~IdPKey )',
+    '!KU( ~idpSk )',
     '\'oidc_req\'',
   ], lines)
 elif argv[1] == 'CodeAgreement':
@@ -143,9 +143,9 @@ elif argv[1] == 'CodeVerifierSecrecy':
     '!Domain',
     '∃',
     '∀',
-    '!KU( ~IdPKey )',
-    re.compile(r'GenBrowserSession\(.+,.+,\s*~(IdPKey|n)'),
-    re.compile(r'TLSServer_In\(~(IdPKey|n),.+,\s*<\'oidc_req\''),
+    '!KU( ~idpSk )',
+    re.compile(r'GenBrowserSession\(.+,.+,\s*~(idpSk|n)'),
+    re.compile(r'TLSServer_In\(~(idpSk|n),.+,\s*<\'oidc_req\''),
     '\'token_req\'',
     '!KU( ~n )',
   ], lines)

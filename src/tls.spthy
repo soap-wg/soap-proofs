@@ -46,6 +46,6 @@ rule TLSServerToClient[color=#FFFFFF]:
   [ TLSClient_In(method, ~sess, $Domain, msg) ]
 
 rule TLSServerToAdversaryClient[color=#FF6961]:
-  [ In(~sess), !TLSServer(method, ~sess, $Domain, msg) ]
+  [ In(~adversarySess), !TLSServer(method, ~adversarySess, $Domain, msg) ]
   -->
   [ Out(msg) ]

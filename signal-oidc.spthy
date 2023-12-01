@@ -151,9 +151,9 @@ rule OIDCAppCodeRedirect[color=#B4D9EF]:
 
 rule OIDCIdPTokenIssue[color=#B4D9EF]:
   let tokenBody = <$IdP, $Client, $Username, nonce, hash>
-      token = <tokenBody, sign(tokenBody, sk)>
+      token = <tokenBody, sign(tokenBody, idpSk)>
   in
-  [ !IdPLtk($IdP, sk)
+  [ !IdPLtk($IdP, idpSk)
   , St_OIDCIdP_Code($IdP, $Username, $Client, code, hash, nonce, code_challenge)
   , TLSServer_In('POST', ~sess, $IdP, <'token_req', code, code_verifier>) ]
   --[ Eq(s256(code_verifier), code_challenge)
