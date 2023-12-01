@@ -320,6 +320,10 @@ lemma SocialAuthentication:
           & s1 = s2))
         | (Ex #x. CompromisedIdP(idp) @ #x)
         | (Ex #x. CompromisedDomain(idp) @ #x)
+        | (Ex app redirectURL #x #y #z.
+              IsMessagingApp(app) @ #x
+            & IsRedirectURL(idp, app, redirectURL) @ #y
+            & CompromisedDomain(redirectURL) @ #z)
         | (Ex p #x. CompromisedAccount(p, idp, acc) @ #x)
         | (Ex p #x. CompromisedMessaging(p, proverKey) @ #x))"
 
