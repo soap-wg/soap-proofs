@@ -24,12 +24,16 @@ rule RedirectURL:
   --[ IsRedirectURL($IdP, $App, $RedirectURL) ]->
   [ !RedirectURL($IdP, $App, $RedirectURL) ]
 
+// NOTE: This restriction might seem overly strict. This practically means that:
+// We require the messaging app uses unique redirect URLs per IdP, and that any
+// usage of the messaging app's redirect URL in other contexts counts as
+// malicious. (Honest other apps cannot do that.)
 restriction UniqueRedirectURLs:
-  "All idp1 idp2 url app #t1 #t2 #t3.
-        ( IsMessagingApp(app) @ #t1
-        & IsRedirectURL(idp1, app, url) @ #t2
-        & IsRedirectURL(idp2, app, url) @ #t3)
-    ==> idp1 = idp2"
+  "All idp1 idp2 app1 app2 url #t1 #t2 #t3.
+        ( IsMessagingApp(app1) @ #t1
+        & IsRedirectURL(idp1, app1, url) @ #t2
+        & IsRedirectURL(idp2, app2, url) @ #t3)
+    ==> (idp1 = idp2 & app1 = app2)"
 
 // Clients need to memorize which query they issued last
 rule InitSessionStore:
