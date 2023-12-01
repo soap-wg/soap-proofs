@@ -1,1 +1,1 @@
-tamarin-prover-release +RTS -N10 -RTS interactive ./signal-oidc.spthy --port=9128
+tamarin-prover +RTS -N24 -RTS interactive --derivcheck-timeout=0 $@ ./signal-oidc.spthy

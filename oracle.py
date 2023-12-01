@@ -36,15 +36,10 @@ def matchAgainstList(priorityList, lines):
     except StopIteration:
       pass
 
-fresh_reg = re.compile(r'!KU\( (~n\.?\d*) \)')
-def gatherFreshNStream(lines):
-  with_fresh = list(filter(bool, map(lambda ln: fresh_reg.match(ln[1]), lines)))
-  return map(lambda match: match[1], with_fresh)
-
 nonSessionGoals = [
     'TLSServer_In( \'GET\', ~sessPost',
     'TLSClient_In( \'GET\', ~sessPost',
-    re.compile(r'TLS(Server|Client)_In\( \'\w+\', ~(IdPKey|code|domain|signalApp)'),
+    re.compile(r'TLS(Server|Client)_In\( \'\w+\', ~(idpSk|code|domain|signalApp|sk|adversarySess)'),
 ]
 
 match = None
@@ -110,33 +105,14 @@ elif argv[1] == 'CodeIsSingleUse':
     'St_OIDCApp_CodeReq',
   ], lines)
 elif argv[1] == 'SocialAuthentication':
-  fvars = gatherFreshNStream(lines)
-  rs = map(lambda fvar: re.compile(r'\(∀ #\w+\. \(!KU\( ' + re.escape(fvar) + r' \) @ #\w+\) ⇒ ⊥\)'), fvars)
-  match = matchAgainstList(list(rs) + [
-    'St_',
-    '!Domain',
-    re.compile(r'TLSServer_In\(~(IdPKey|sessPost|code|domain|signalApp)\.?\d*'),
-    '!KU( ~IdPKey',
-    '!KU( ~domain',
-    '!KU( ~sessPost',
-    '!KU( ~signalApp',
-    '!KU( ~code',
-    re.compile(r'\$\w+\.?\d* = \$\w+\.?\d*'),
-    '\'code\'',
-    '\'oidc_req\'',
-    '~code',
-    '\'token\'',
-    '\'login\'',
-    '\'auth_req\'',
-    '!KU( ~sess',
-    '\'sign_up\'',
-    '\'idp_ack\'',
-    '\'fwd_token\'',
-    re.compile(r'∃ #\w+. \(Username(App|Server)\('),
-    'GenBrowserSession',
-    '!KU( sign',
-    '~sessPost',
-    '!KU( ~n',
+  match = matchAgainstList(nonSessionGoals + [
+    '∃',
+    '!MessagingLtkUser',
+    '!UseMessagingKeyFor',
+    '!IdPAccount',
+    '!Publish',
+    re.compile(r'E2EE_In\(.+, .+, m1 \)'),
+    '!KU( ~sk',
   ], lines)
 elif argv[1] == 'CodeVerifierSecrecy':
   match = matchAgainstList([
@@ -155,9 +131,25 @@ elif argv[1] == 'Executability':
       if matchesNone(deferList, (num, goal)):
         return num
     return matchAgainstList(deferList, lines)
-
-  match = defer([
-    'SessionStore(',
+elif argv[1] == 'SOAPSenderInvariance':
+  match = matchAgainstList(nonSessionGoals + [
+    '!KU( ~sk',
+    '∃',
+    '∀',
+    'St_OIDC',
+    re.compile(r'TLSServer_In\( \'GET\', ~sess(\.\d+)?, \$RedirectURL(\.\d+)?, <\'code\''),
+    '\'POST\'',
+    '!KU( ~adversarySess',
+    '!KU( ~idpSk',
+    '!KU( ~domain',
+    '!KU( ~sessPost',
+    '!KU( ~signalApp',
+    '!KU( ~code',
+    '\'fwd_token\'',
+    '\'code\'',
+    '\'oidc_req\'',
+    '\'token\'',
+    '\'login\'',
   ], lines)
 
 if match is not None:
