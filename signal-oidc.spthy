@@ -72,7 +72,9 @@ rule OIDCAppLaunchBrowser[color=#B4D9EF]:
   --[ GenNonce(nonce)
     , GenBrowserSession($Prover, $IdP, ~sess)
     , GenerateCodeVerifierFor(code_verifier, $IdP)
-    , IsCodeChallenge(code_challenge) ]->
+    , IsCodeChallenge(code_challenge)
+    , SOAPStart($Prover, nonce)
+    , SOAPMessaging($Prover, nonce, pkVerifier, pk(skProver)) ]->
   [ TLSClient_Out('GET', ~sess, $IdP, <'oidc_req', $App, hash, nonce, code_challenge, $RedirectURL>)
   // This Out fact models that the adversary can access authorization requests
   // (if taken together with the previous Out fact).
@@ -121,7 +123,10 @@ rule OIDCIdPIssueCode[color=#B4D9EF]:
     , IsPW(pw)
     , IsCode(~code)
     , MustBeNonce(nonce)
-    , GenCode($IdP, ~code) ]->
+    , GenCode($IdP, ~code)
+    // NOTE: It is not good that I make this annotation at the IdP. I must
+    // investigate this at a later point.
+    , SOAPIdP($User, nonce, $IdP, $Username) ]->
   [ TLSClient_Out('GET', ~sess2, $RedirectURL, <'code', ~code, nonce>)
   , St_OIDCIdP_Code($IdP, $Username, $Client, ~code, hash, nonce, code_challenge) ]
 
@@ -286,6 +291,23 @@ lemma Executability:
     & Sender(s2) @ #t5
     & s1 = s2
     & (not Ex #x. SomeCompromise() @ #x)"
+
+lemma SOAPSenderInvariance[reuse]:
+  "All v proverKey idp acc verifierKey #t1.
+        ( AssociateAs(v, proverKey, idp, acc) @ #t1
+        & ReceivingKey(verifierKey) @ #t1)
+    ==>   (Ex prover nonce #x1 #x2.
+              SOAPStart(prover, nonce) @ #x1
+            & SOAPMessaging(prover, nonce, verifierKey, proverKey) @ #x1
+            & SOAPIdP(prover, nonce, idp, acc) @ #x2)
+        | (Ex #x. CompromisedIdP(idp) @ #x)
+        | (Ex #x. CompromisedDomain(idp) @ #x)
+        | (Ex app redirectURL #x #y #z.
+              IsMessagingApp(app) @ #x
+            & IsRedirectURL(idp, app, redirectURL) @ #y
+            & CompromisedDomain(redirectURL) @ #z)
+        | (Ex p #x. CompromisedAccount(p, idp, acc) @ #x)
+        | (Ex p #x. CompromisedMessaging(p, proverKey) @ #x)"
 
 lemma SocialAuthentication:
   "All v proverKey verifierKey m1 idp acc m2 #t1 #t2 #t3.
