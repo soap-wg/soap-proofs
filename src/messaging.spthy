@@ -91,7 +91,7 @@ rule ObtainKeyFin[color=#9AD5D8]:
   [ !KeyServer($Server)
   , St_KeyReq($A, $Phone, ~sess)
   , TLSClient_In('GET', ~sess, $Server, <'msg_key_resp', $Phone, ltk>) ]
-  --[ GotMessagingKey($Phone, ltk) ]->
+  -->
   [ !UseMessagingKeyFor($A, $Phone, ltk) ]
 
 rule SendInterface:

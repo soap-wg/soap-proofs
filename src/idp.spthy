@@ -1,6 +1,6 @@
 rule IdPSetup:
   [ !Domain($IdP), Fr(~idpSk) ]
-  --[ ClaimIdPKey($IdP, ~idpSk) ]->
+  -->
   [ !IdP($IdP), !IdPLtk($IdP, ~idpSk)
   , Out(pk(~idpSk)) ]
 

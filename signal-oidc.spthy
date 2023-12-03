@@ -51,9 +51,7 @@ rule ClearSessionStore:
 // be unrealistic, though.
 rule LinkClick[color=#FF6961]:
   [ Fr(~sess), In(m), !Domain($Domain) ]
-  --[ GenBrowserSession($Prover, $Domain, ~sess)
-    , AdversaryLinkClick()
-    , SomeCompromise() ]->
+  --[ SomeCompromise() ]->
   [ TLSClient_Out('GET', ~sess, $Domain, m)
   , Browser($Prover, $Domain, ~sess) ]
 
@@ -70,9 +68,7 @@ rule OIDCAppLaunchBrowser[color=#B4D9EF]:
   , SessionStore($Prover, drop1, drop2)
   , Fr(salt), Fr(nonce), Fr(code_verifier), Fr(~sess) ]
   --[ GenNonce(nonce)
-    , GenBrowserSession($Prover, $IdP, ~sess)
     , GenerateCodeVerifierFor(code_verifier, $IdP)
-    , IsCodeChallenge(code_challenge)
     , SOAPStart($Prover, nonce)
     , SOAPMessaging($Prover, nonce, pkVerifier, pk(skProver)) ]->
   [ TLSClient_Out('GET', ~sess, $IdP, <'oidc_req', $App, hash, nonce, code_challenge, $RedirectURL>)
@@ -95,7 +91,7 @@ rule OIDCAppLogin[color=#B4D9EF]:
   , !IdP($IdP)
   , TLSClient_In('GET', ~sess, $IdP, 'auth_req')
   , !IdPAccount($Prover, $IdP, $Username, ~pw) ]
-  --[ UseBrowserSession($Prover, $IdP, ~sess) ]->
+  -->
   [ TLSClient_Out('GET', ~sess, $IdP, <'login', $Username, ~pw>)
   , Browser($Prover, $IdP, ~sess) ]
 
@@ -119,26 +115,13 @@ rule OIDCIdPIssueCode[color=#B4D9EF]:
   , Fr(~code), Fr(~sess2)
   , St_OIDCServer_Auth($IdP, $Client, $RedirectURL, ~sess, hash, nonce, code_challenge)
   , TLSServer_In('GET', ~sess, $IdP, <'login', $Username, pw>) ]
-  --[ IdPIssueCode($IdP, $Username, ~code)
-    , IsPW(pw)
-    , IsCode(~code)
+  --[ IsCode(~code)
     , MustBeNonce(nonce)
-    , GenCode($IdP, ~code)
     // NOTE: It is not good that I make this annotation at the IdP. I must
     // investigate this at a later point.
     , SOAPIdP($User, nonce, $IdP, $Username) ]->
   [ TLSClient_Out('GET', ~sess2, $RedirectURL, <'code', ~code, nonce>)
   , St_OIDCIdP_Code($IdP, $Username, $Client, ~code, hash, nonce, code_challenge) ]
-
-// lemma IsPW[reuse]:
-//   "All pw #x. IsPW(pw) @ #x
-//   ==>   (Ex u i un #y. UsernameApp(u, i, un, pw) @ #y)
-//       | (Ex #y. KU(pw) @ #y)"
-
-// lemma UserAccountRequiresSignUp[reuse]:
-//   "All u i un pw #x. ClaimUsername(u, i, un, pw) @ #x
-//   ==>   (Ex #y. UsernameApp(u, i, un, pw) @ #y)
-//       | (Ex d #y. CompromisedDomain(i, d) @ #y)"
 
 rule OIDCAppCodeRedirect[color=#B4D9EF]:
   // Do not pattern match who the browser session was initiated for. The Messaging
@@ -149,8 +132,7 @@ rule OIDCAppCodeRedirect[color=#B4D9EF]:
   , Fr(~sessPost)
   , SessionStore($Prover, nonce, <$IdP, $VerifierPhone, hash, salt, code_verifier>)
   , TLSServer_In('GET', ~sess, $RedirectURL, <'code', code, nonce>) ]
-  --[ AppReceiveCode($Prover, $IdP, code)
-    , SelfIssued($Prover, nonce)
+  --[ SelfIssued($Prover, nonce)
     , Neq(nonce, 'null')
     , MustBeCode(code) ]->
   [ TLSClient_Out('POST', ~sessPost, $IdP, <'token_req', code, code_verifier>)
@@ -232,7 +214,6 @@ rule OIDCTokenForward[color=#B4D9EF]:
   --[ Eq(h(fp, salt), hash)
     , Eq(verify(signature, body, pkIdP), true)
     , GetTokenForCode($IdP, ~sessPost, code)
-    , Forward($Prover, token)
     , MustBeToken(token)
     , MustBeCode(code)
     , UsedCode($IdP, code) ]->
