@@ -131,7 +131,7 @@ elif argv[1] == 'Executability':
       if matchesNone(deferList, (num, goal)):
         return num
     return matchAgainstList(deferList, lines)
-elif argv[1] == 'SOAPSenderInvariance':
+elif argv[1] == 'SOAPAgreement':
   match = matchAgainstList(nonSessionGoals + [
     '!KU( ~sk',
     '∃',

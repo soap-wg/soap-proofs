@@ -292,7 +292,7 @@ lemma Executability:
     & s1 = s2
     & (not Ex #x. SomeCompromise() @ #x)"
 
-lemma SOAPSenderInvariance[reuse]:
+lemma SOAPAgreement[reuse]:
   "All v proverKey idp acc verifierKey #t1.
         ( AssociateAs(v, proverKey, idp, acc) @ #t1
         & ReceivingKey(verifierKey) @ #t1)
