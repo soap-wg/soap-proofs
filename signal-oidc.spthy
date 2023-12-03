@@ -53,7 +53,7 @@ rule LinkClick[color=#FF6961]:
   [ Fr(~sess), In(m), !Domain($Domain) ]
   --[ SomeCompromise() ]->
   [ TLSClient_Out('GET', ~sess, $Domain, m)
-  , Browser($Prover, $Domain, ~sess) ]
+  , !Browser($Prover, ~sess) ]
 
 // OpenID Connect Auth code + PKCE flow
 rule OIDCAppLaunchBrowser[color=#B4D9EF]:
@@ -76,7 +76,7 @@ rule OIDCAppLaunchBrowser[color=#B4D9EF]:
   // (if taken together with the previous Out fact).
   , Out(<hash, nonce, code_challenge>)
   , SessionStore($Prover, nonce, <$IdP, $VerifierPhone, hash, salt, code_verifier>)
-  , Browser($Prover, $IdP, ~sess) ]
+  , !Browser($Prover, ~sess) ]
 
 rule OIDCIdPInit[color=#B4D9EF]:
   [ !IdP($IdP)
@@ -87,13 +87,12 @@ rule OIDCIdPInit[color=#B4D9EF]:
   , St_OIDCServer_Auth($IdP, $Client, $RedirectURL, ~sess, hash, nonce, code_challenge) ]
 
 rule OIDCAppLogin[color=#B4D9EF]:
-  [ Browser($Prover, $IdP, ~sess)
+  [ !Browser($Prover, ~sess)
   , !IdP($IdP)
   , TLSClient_In('GET', ~sess, $IdP, 'auth_req')
   , !IdPAccount($Prover, $IdP, $Username, ~pw) ]
   -->
-  [ TLSClient_Out('GET', ~sess, $IdP, <'login', $Username, ~pw>)
-  , Browser($Prover, $IdP, ~sess) ]
+  [ TLSClient_Out('GET', ~sess, $IdP, <'login', $Username, ~pw>) ]
 
 lemma PasswordsConfidential[reuse]:
   "All user idp username pw #t1 #t2.
@@ -112,7 +111,7 @@ lemma MessagingKeysUnique[reuse]:
 rule OIDCIdPIssueCode[color=#B4D9EF]:
   [ !IdP($IdP)
   , !IdPAccount($User, $IdP, $Username, pw)
-  , Fr(~code), Fr(~sess2)
+  , Fr(~code)
   , St_OIDCServer_Auth($IdP, $Client, $RedirectURL, ~sess, hash, nonce, code_challenge)
   , TLSServer_In('GET', ~sess, $IdP, <'login', $Username, pw>) ]
   --[ IsCode(~code)
@@ -120,7 +119,7 @@ rule OIDCIdPIssueCode[color=#B4D9EF]:
     // NOTE: It is not good that I make this annotation at the IdP. I must
     // investigate this at a later point.
     , SOAPIdP($User, nonce, $IdP, $Username) ]->
-  [ TLSClient_Out('GET', ~sess2, $RedirectURL, <'code', ~code, nonce>)
+  [ TLSClient_Out('GET', ~sess, $RedirectURL, <'code', ~code, nonce>)
   , St_OIDCIdP_Code($IdP, $Username, $Client, ~code, hash, nonce, code_challenge) ]
 
 rule OIDCAppCodeRedirect[color=#B4D9EF]:
@@ -131,6 +130,7 @@ rule OIDCAppCodeRedirect[color=#B4D9EF]:
   , !MessagingApp($App)
   , Fr(~sessPost)
   , SessionStore($Prover, nonce, <$IdP, $VerifierPhone, hash, salt, code_verifier>)
+  , !Browser($Prover, ~sess)
   , TLSServer_In('GET', ~sess, $RedirectURL, <'code', code, nonce>) ]
   --[ SelfIssued($Prover, nonce)
     , Neq(nonce, 'null')
