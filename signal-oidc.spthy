@@ -67,7 +67,7 @@ rule OIDCAppLaunchBrowser[color=#B4D9EF]:
   , !UseMessagingKeyFor($Prover, $VerifierPhone, pkVerifier)
   , SessionStore($Prover, drop1, drop2)
   , Fr(salt), Fr(nonce), Fr(code_verifier), Fr(~sess) ]
-  --[ GenNonce(nonce)
+  --[ IsNonce(nonce)
     , GenerateCodeVerifierFor(code_verifier, $IdP)
     , SOAPStart($Prover, nonce)
     , SOAPMessaging($Prover, nonce, pkVerifier, pk(skProver)) ]->
@@ -177,13 +177,13 @@ lemma TokenFormatAndOTPLearning[sources]:
     ==> (Ex first second user idp client nonce hashed sk.
             token = <first, second>
           & first = <idp, client, user, nonce, hashed>
-          & ((Ex #h. KU(nonce) @ #h & #h < #i) | (Ex #h. GenNonce(nonce) @ #h))
+          & ((Ex #h. KU(nonce) @ #h & #h < #i) | (Ex #h. IsNonce(nonce) @ #h))
           & ((Ex #h. KU(hashed) @ #h & #h < #i) | (Ex fp salt. hashed = h(fp, salt)))
           & second = sign(first, sk))
   ) & (All nonce #i.
         MustBeNonce(nonce) @ #i
     ==> ( (Ex #h. KU(nonce) @ #h & #h < #i)
-        | (Ex #h. GenNonce(nonce) @ #h)))
+        | (Ex #h. IsNonce(nonce) @ #h)))
   & (All code #i.
         MustBeCode(code) @ #i
     ==> ( (Ex #h. KU(code) @ #h & #h < #i)
