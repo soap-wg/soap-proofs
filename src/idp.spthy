@@ -75,10 +75,19 @@ lemma PublishExecutability:
        ReceiveIdP(idp, user, m) @ #t
     & (not Ex #x. SomeCompromise() @ #x)"
 
-lemma IdPChannelSenderInvariance:
+lemma IdPChannelSenderInvarianceAgreement:
   "All user idp m #t.
         ReceiveIdP(idp, user, m) @ #t
     ==>   (Ex #x. SendIdP(idp, user, m) @ #x)
+        | (Ex #x. CompromisedIdP(idp) @ #x)
+        | (Ex #x. CompromisedDomain(idp) @ #x)
+        | (Ex p #x. CompromisedAccount(p, idp, user) @ #x)"
+
+lemma IdPChannelSenderInvarianceCorrespondence:
+  "All idp user m1 m2 s1 s2 #t1 #t2.
+        ( SendIdP(idp, user, m1) @ #t1 & Sender(s1) @ #t1
+        & SendIdP(idp, user, m2) @ #t2 & Sender(s2) @ #t2)
+    ==>   (s1 = s2)
         | (Ex #x. CompromisedIdP(idp) @ #x)
         | (Ex #x. CompromisedDomain(idp) @ #x)
         | (Ex p #x. CompromisedAccount(p, idp, user) @ #x)"
