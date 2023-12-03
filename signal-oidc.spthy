@@ -64,7 +64,7 @@ rule OIDCAppLaunchBrowser[color=#B4D9EF]:
   [ !IdP($IdP), !MessagingApp($App)
   , !RedirectURL($IdP, $App, $RedirectURL)
   , !MessagingLtkUser($Prover, $ProverPhone, skProver)
-  , !UseMessagingKeyFor($Prover, $VerifierPhone, pkVerifier)
+  , !UseMessagingKeyFor($Prover, $VerifierPhone, pkVerifier)[no_precomp]
   , SessionStore($Prover, drop1, drop2)
   , Fr(salt), Fr(nonce), Fr(code_verifier), Fr(~sess) ]
   --[ IsNonce(nonce)
@@ -203,7 +203,7 @@ rule OIDCTokenForward[color=#B4D9EF]:
       token = <body, signature>
   in
   [ !IdP($IdP), !MessagingApp($App)
-  , !UseMessagingKeyFor($Prover, $VerifierPhone, pkVerifier)
+  , !UseMessagingKeyFor($Prover, $VerifierPhone, pkVerifier)[no_precomp]
   , !UseIdPKey($Prover, $IdP, pkIdP)
   , !MessagingLtkUser($Prover, $ProverPhone, skProver)
   , St_OIDCApp_CodeReq($Prover, $IdP, $VerifierPhone, ~sessPost, hash, salt, code)
@@ -243,7 +243,7 @@ rule OIDCTokenReceive[color=#B4D9EF]:
       fp = fingerprint(<pkProver, pk(skVerifier)>)
   in
   [ !MessagingLtkUser($Verifier, $VerifierPhone, skVerifier)
-  , !UseMessagingKeyFor($Verifier, $ProverPhone, pkProver)
+  , !UseMessagingKeyFor($Verifier, $ProverPhone, pkProver)[no_precomp]
   , !MessagingApp($App)
   , !UseIdPKey($Verifier, $IdP, pkIdP)
   , E2EE_In(pkProver, pk(skVerifier), <'fwd_token', <body, signature>, salt>) ]

@@ -101,14 +101,14 @@ rule SendInterface:
 
 rule MessagingSend:
   [ SendAsTo($A, $PeerPhone, m)
-  , !MessagingLtkUser($A, $MyPhone, ~sk), !UseMessagingKeyFor($A, $PeerPhone, ltk) ]
+  , !MessagingLtkUser($A, $MyPhone, ~sk), !UseMessagingKeyFor($A, $PeerPhone, ltk)[no_precomp] ]
   --[ SendMessaging(pk(~sk), ltk, m)
     , Sender($A)
     , SendTo($PeerPhone, 'messaging', m) ]->
   [ E2EE_Out(pk(~sk), ltk, m) ]
 
 rule MessagingReceive:
-  [ !MessagingLtkUser($A, $MyPhone, ~skr), !UseMessagingKeyFor($A, $PeerPhone, pkPeer)
+  [ !MessagingLtkUser($A, $MyPhone, ~skr), !UseMessagingKeyFor($A, $PeerPhone, pkPeer)[no_precomp]
   , E2EE_In(pkPeer, pk(~skr), m) ]
   --[ ReceiveMessaging(pkPeer, pk(~skr), m) ]->
   []
