@@ -139,7 +139,6 @@ elif argv[1] == 'SOAPAgreement':
     'St_OIDC',
     re.compile(r'TLSServer_In\( \'GET\', ~sess(\.\d+)?, \$RedirectURL(\.\d+)?, <\'code\''),
     '\'POST\'',
-    '!KU( ~adversarySess',
     '!KU( ~idpSk',
     '!KU( ~domain',
     '!KU( ~sessPost',
@@ -150,6 +149,7 @@ elif argv[1] == 'SOAPAgreement':
     '\'oidc_req\'',
     '\'token\'',
     '\'login\'',
+    '!KU( sign',
   ], lines)
 
 if match is not None:
