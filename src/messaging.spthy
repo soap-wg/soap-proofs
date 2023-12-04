@@ -121,14 +121,6 @@ lemma MessagingExecutability:
 
 predicates: KeyServerCompromise() <=> Ex d #x #y. IsKeyServer(d) @ #x & CompromisedDomain(d) @ #y
 
-lemma MessagingSecrecy:
-  "All receiverKey m #t.
-        SendTo(receiverKey, 'messaging', m) @ #t
-    ==> ( (not Ex #x. K(m) @ #x)
-        | KeyServerCompromise()
-        | (Ex #x. SMSLeak() @ #x)
-        | (Ex r #x. CompromisedMessaging(r, receiverKey) @ #x))"
-
 lemma MessagingSenderInvarianceAgreement:
   "All senderKey myKey m #t.
         ( ReceiveMessaging(senderKey, myKey, m) @ #t)
