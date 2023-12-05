@@ -63,7 +63,7 @@ rule OIDCAppLaunchBrowser[color=#B4D9EF]:
   in
   [ !IdP($IdP), !MessagingApp($App)
   , !RedirectURL($IdP, $App, $RedirectURL)
-  , !MessagingLtkUser($Prover, $ProverPhone, skProver)
+  , !MessagingLtkUser($Prover, $ProverPhone, skProver)[no_precomp]
   , !UseMessagingKeyFor($Prover, $VerifierPhone, pkVerifier)[no_precomp]
   , SessionStore($Prover, drop1, drop2)
   , Fr(salt), Fr(nonce), Fr(code_verifier), Fr(~sess) ]
@@ -205,7 +205,7 @@ rule OIDCTokenForward[color=#B4D9EF]:
   [ !IdP($IdP), !MessagingApp($App)
   , !UseMessagingKeyFor($Prover, $VerifierPhone, pkVerifier)[no_precomp]
   , !UseIdPKey($Prover, $IdP, pkIdP)
-  , !MessagingLtkUser($Prover, $ProverPhone, skProver)
+  , !MessagingLtkUser($Prover, $ProverPhone, skProver)[no_precomp]
   , St_OIDCApp_CodeReq($Prover, $IdP, $VerifierPhone, ~sessPost, hash, salt, code)
   // We do not check the nonce in the ID token. This is to highlight that the
   // inclusion of a true nonce in the ID token is not strictly necessary in the
@@ -242,7 +242,7 @@ rule OIDCTokenReceive[color=#B4D9EF]:
   let body = <$IdP, $App, $Username, nonce, hash>
       fp = fingerprint(<pkProver, pk(skVerifier)>)
   in
-  [ !MessagingLtkUser($Verifier, $VerifierPhone, skVerifier)
+  [ !MessagingLtkUser($Verifier, $VerifierPhone, skVerifier)[no_precomp]
   , !UseMessagingKeyFor($Verifier, $ProverPhone, pkProver)[no_precomp]
   , !MessagingApp($App)
   , !UseIdPKey($Verifier, $IdP, pkIdP)

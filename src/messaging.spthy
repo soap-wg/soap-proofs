@@ -66,10 +66,10 @@ rule MessagingFin[color=#FDFD96]:
   , St_MessagingReg_AppWait($A, $Number, ~sess, sk)
   , TLSClient_In('GET', ~sess, $Server, 'msg_signup_ack') ]
   --[ ClaimMessagingKey($A, $Number, sk) ]->
-  [ !MessagingLtkUser($A, $Number, sk) ]
+  [ !MessagingLtkUser($A, $Number, sk)[no_precomp] ]
 
 rule MessagingCompromise[color=#FF6961]:
-  [ !MessagingLtkUser($A, $Number, ~sk) ]
+  [ !MessagingLtkUser($A, $Number, ~sk)[no_precomp] ]
   --[ CompromisedMessaging($A, pk(~sk))
     , SomeCompromise() ]->
   [ Out(~sk) ]
@@ -92,7 +92,7 @@ rule ObtainKeyFin[color=#9AD5D8]:
   , St_KeyReq($A, $Phone, ~sess)
   , TLSClient_In('GET', ~sess, $Server, <'msg_key_resp', $Phone, ltk>) ]
   -->
-  [ !UseMessagingKeyFor($A, $Phone, ltk) ]
+  [ !UseMessagingKeyFor($A, $Phone, ltk)[no_precomp] ]
 
 rule SendInterface:
   [ Fr(~m) ]
@@ -101,14 +101,14 @@ rule SendInterface:
 
 rule MessagingSend:
   [ SendAsTo($A, $PeerPhone, m)
-  , !MessagingLtkUser($A, $MyPhone, ~sk), !UseMessagingKeyFor($A, $PeerPhone, ltk)[no_precomp] ]
+  , !MessagingLtkUser($A, $MyPhone, ~sk)[no_precomp], !UseMessagingKeyFor($A, $PeerPhone, ltk)[no_precomp] ]
   --[ SendMessaging(pk(~sk), ltk, m)
     , Sender($A)
     , SendTo($PeerPhone, 'messaging', m) ]->
   [ E2EE_Out(pk(~sk), ltk, m) ]
 
 rule MessagingReceive:
-  [ !MessagingLtkUser($A, $MyPhone, ~skr), !UseMessagingKeyFor($A, $PeerPhone, pkPeer)[no_precomp]
+  [ !MessagingLtkUser($A, $MyPhone, ~skr)[no_precomp], !UseMessagingKeyFor($A, $PeerPhone, pkPeer)[no_precomp]
   , E2EE_In(pkPeer, pk(~skr), m) ]
   --[ ReceiveMessaging(pkPeer, pk(~skr), m) ]->
   []
