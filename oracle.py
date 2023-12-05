@@ -39,7 +39,7 @@ def matchAgainstList(priorityList, lines):
 nonSessionGoals = [
     'TLSServer_In( \'GET\', ~sessPost',
     'TLSClient_In( \'GET\', ~sessPost',
-    re.compile(r'TLS(Server|Client)_In\( \'\w+\', ~(pw|idpSk|code|domain|signalApp|sk|adversarySess)'),
+    re.compile(r'TLS(Server|Client)_In\( \'\w+\', ~(pw|idpSk|code|domain|signalApp|sk|adversarySess|challenge)'),
 ]
 
 match = None
@@ -154,6 +154,16 @@ elif argv[1] == 'SOAPAgreement':
 elif argv[1] == 'IdPChannelSenderInvarianceAgreement':
   match = matchAgainstList(nonSessionGoals + [
     '!KU( ~pw',
+  ], lines)
+elif argv[1] == 'MessagingSenderInvarianceAgreement':
+  match = matchAgainstList(nonSessionGoals + [
+    '!KU( ~sk',
+    '!KU( ~challenge',
+    '!MessagingLtkUser',
+    '!UseMessagingKeyFor',
+    'E2EE_In',
+    'St_SigReg_Server',
+    '\'otp_respond\'',
   ], lines)
 
 if match is not None:
