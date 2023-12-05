@@ -295,10 +295,9 @@ lemma SocialAuthentication:
         ( AssociateAs(v, proverKey, idp, acc) @ #t1
         & ReceiveMessaging(proverKey, verifierKey, m1) @ #t2
         & ReceiveIdP(idp, acc, m2) @ #t3)
-    ==> ( (Ex s1 s2 #x1 #x2.
-          ( SendMessaging(proverKey, verifierKey, m1) @ #x1 & Sender(s1) @ #x1
-          & SendIdP(idp, acc, m2) @ #x2 & Sender(s2) @ #x2
-          & s1 = s2))
+    ==> ( (Ex s #x1 #x2.
+          ( SendMessaging(proverKey, verifierKey, m1) @ #x1 & Sender(s) @ #x1
+          & SendIdP(idp, acc, m2) @ #x2 & Sender(s) @ #x2))
         | (Ex #x. CompromisedIdP(idp) @ #x)
         | (Ex #x. CompromisedDomain(idp) @ #x)
         | (Ex app redirectURL #x #y #z.
