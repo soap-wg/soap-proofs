@@ -20,7 +20,7 @@ rule MessagingApp:
   [ !MessagingApp($App) ]
 
 rule RedirectURL:
-  [ !IdP($IdP), !Client($App), !Domain($RedirectURL, ~secret) ]
+  [ !IdP($IdP), !Client($App), !Domain($RedirectURL) ]
   --[ IsRedirectURL($IdP, $App, $RedirectURL) ]->
   [ !RedirectURL($IdP, $App, $RedirectURL) ]
 
@@ -50,9 +50,9 @@ rule ClearSessionStore:
 // otherwise, the adversary can choose the session they forward to. This would
 // be unrealistic, though.
 rule LinkClick[color=#FF6961]:
-  [ Fr(~sess), In(m), !Domain($Domain, ~secret) ]
+  [ Fr(~sess), In(m), !Domain($Domain) ]
   --[ SomeCompromise() ]->
-  [ Out(tlsClient('GET', ~sess, cert(~secret), m))
+  [ TLSClient_Out('GET', ~sess, $Domain, m)
   , !Browser($Prover, ~sess) ]
 
 // OpenID Connect Auth code + PKCE flow
@@ -62,7 +62,6 @@ rule OIDCAppLaunchBrowser[color=#B4D9EF]:
       code_challenge = s256(code_verifier)
   in
   [ !IdP($IdP), !MessagingApp($App)
-  , !Domain($IdP, ~secret)
   , !RedirectURL($IdP, $App, $RedirectURL)
   , !MessagingLtkUser($Prover, $ProverPhone, skProver)[no_precomp]
   , !UseMessagingKeyFor($Prover, $VerifierPhone, pkVerifier)[no_precomp]
@@ -72,7 +71,7 @@ rule OIDCAppLaunchBrowser[color=#B4D9EF]:
     , GenerateCodeVerifierFor(code_verifier, $IdP)
     , SOAPStart($Prover, nonce)
     , SOAPMessaging($Prover, nonce, pkVerifier, pk(skProver)) ]->
-  [ Out(tlsClient('GET', ~sess, cert(~secret), <'oidc_req', $App, hash, nonce, code_challenge, $RedirectURL>))
+  [ TLSClient_Out('GET', ~sess, $IdP, <'oidc_req', $App, hash, nonce, code_challenge, $RedirectURL>)
   // This Out fact models that the adversary can access authorization requests
   // (if taken together with the previous Out fact).
   , Out(<hash, nonce, code_challenge>)
@@ -80,20 +79,20 @@ rule OIDCAppLaunchBrowser[color=#B4D9EF]:
   , !Browser($Prover, ~sess) ]
 
 rule OIDCIdPInit[color=#B4D9EF]:
-  [ !IdP($IdP), !Domain($IdP, ~secret)
+  [ !IdP($IdP)
   , !RedirectURL($IdP, $Client, $RedirectURL)
-  , In(tlsClient('GET', ~sess, cert(~secret), <'oidc_req', $Client, hash, nonce, code_challenge, $RedirectURL>)) ]
+  , TLSServer_In('GET', ~sess, $IdP, <'oidc_req', $Client, hash, nonce, code_challenge, $RedirectURL>) ]
   --[ MustBeNonce(nonce) ]->
-  [ Out(tlsServer('GET', ~sess, ~secret, 'auth_req'))
+  [ TLSServer_Out('GET', ~sess, $IdP, 'auth_req')
   , St_OIDCServer_Auth($IdP, $Client, $RedirectURL, ~sess, hash, nonce, code_challenge) ]
 
 rule OIDCAppLogin[color=#B4D9EF]:
   [ !Browser($Prover, ~sess)
-  , !IdP($IdP), !Domain($IdP, ~secret)
-  , In(tlsServer('GET', ~sess, ~secret, 'auth_req'))
+  , !IdP($IdP)
+  , TLSClient_In('GET', ~sess, $IdP, 'auth_req')
   , !IdPAccount($Prover, $IdP, $Username, ~pw) ]
   -->
-  [ Out(tlsClient('GET', ~sess, cert(~secret), <'login', $Username, ~pw>)) ]
+  [ TLSClient_Out('GET', ~sess, $IdP, <'login', $Username, ~pw>) ]
 
 lemma PasswordsConfidential[reuse]:
   "All user idp username pw #t1 #t2.
@@ -110,35 +109,33 @@ lemma MessagingKeysUnique[reuse]:
       | KeyServerCompromise()"
 
 rule OIDCIdPIssueCode[color=#B4D9EF]:
-  [ !IdP($IdP), !Domain($IdP, ~idpSecret)
+  [ !IdP($IdP)
   , !IdPAccount($User, $IdP, $Username, pw)
   , Fr(~code)
   , St_OIDCServer_Auth($IdP, $Client, $RedirectURL, ~sess, hash, nonce, code_challenge)
-  , !Domain($RedirectURL, ~redirectSecret)
-  , In(tlsClient('GET', ~sess, cert(~idpSecret), <'login', $Username, pw>)) ]
+  , TLSServer_In('GET', ~sess, $IdP, <'login', $Username, pw>) ]
   --[ IsCode(~code)
     , MustBeNonce(nonce)
     // NOTE: It is not good that I make this annotation at the IdP. I must
     // investigate this at a later point.
     , SOAPIdP($User, nonce, $IdP, $Username) ]->
-  [ Out(tlsClient('GET', ~sess, cert(~redirectSecret), <'code', ~code, nonce>))
+  [ TLSClient_Out('GET', ~sess, $RedirectURL, <'code', ~code, nonce>)
   , St_OIDCIdP_Code($IdP, $Username, $Client, $RedirectURL, ~code, hash, nonce, code_challenge) ]
 
 rule OIDCAppCodeRedirect[color=#B4D9EF]:
   // Do not pattern match who the browser session was initiated for. The Messaging
   // app cannot verify this. It is only critical that the adversary could not
   // choose the session.
-  [ !RedirectURL($IdP, $App, $RedirectURL), !Domain($RedirectURL, ~redirectSecret)
-  , !IdP($IdP), !Domain($IdP, ~idpSecret)
+  [ !RedirectURL($IdP, $App, $RedirectURL), !IdP($IdP)
   , !MessagingApp($App)
   , Fr(~sessPost)
   , SessionStore($Prover, nonce, <$IdP, $VerifierPhone, hash, salt, code_verifier>)
   , !Browser($Prover, ~sess)
-  , In(tlsClient('GET', ~sess, cert(~redirectSecret), <'code', code, nonce>)) ]
+  , TLSServer_In('GET', ~sess, $RedirectURL, <'code', code, nonce>) ]
   --[ SelfIssued($Prover, nonce)
     , Neq(nonce, 'null')
     , MustBeCode(code) ]->
-  [ Out(tlsClient('POST', ~sessPost, cert(~idpSecret), <'token_req', code, code_verifier, $RedirectURL>))
+  [ TLSClient_Out('POST', ~sessPost, $IdP, <'token_req', code, code_verifier, $RedirectURL>)
   , St_OIDCApp_CodeReq($Prover, $IdP, $VerifierPhone, ~sessPost, hash, salt, code)
   , SessionStore($Prover, 'null', 'null') ]
 
@@ -146,15 +143,15 @@ rule OIDCIdPTokenIssue[color=#B4D9EF]:
   let tokenBody = <$IdP, $Client, $Username, nonce, hash>
       token = <tokenBody, sign(tokenBody, idpSk)>
   in
-  [ !IdPLtk($IdP, idpSk), !Domain($IdP, ~secret)
+  [ !IdPLtk($IdP, idpSk)
   , St_OIDCIdP_Code($IdP, $Username, $Client, $RedirectURL, code, hash, nonce, code_challenge)
-  , In(tlsClient('POST', ~sess, cert(~secret), <'token_req', code, code_verifier, $RedirectURL>)) ]
+  , TLSServer_In('POST', ~sess, $IdP, <'token_req', code, code_verifier, $RedirectURL>) ]
   --[ Eq(s256(code_verifier), code_challenge)
     , IssueTokenForCode($IdP, ~sess, code)
     , MustBeToken(token)
     , UseCode($IdP, $Client, code)
     , UseCodeVerifierFor($IdP, code_verifier) ]->
-  [ Out(tlsServer('POST', ~sess, ~secret, <'token', token>)) ]
+  [ TLSServer_Out('POST', ~sess, $IdP, <'token', token>) ]
 
 lemma CodeSecrecy[reuse]:
   "All idp client code #t1 #t2 #t3.
@@ -205,7 +202,7 @@ rule OIDCTokenForward[color=#B4D9EF]:
       fp = fingerprint(<pk(skProver), pkVerifier>)
       token = <body, signature>
   in
-  [ !IdP($IdP), !Domain($IdP, ~secret), !MessagingApp($App)
+  [ !IdP($IdP), !MessagingApp($App)
   , !UseMessagingKeyFor($Prover, $VerifierPhone, pkVerifier)[no_precomp]
   , !UseIdPKey($Prover, $IdP, pkIdP)
   , !MessagingLtkUser($Prover, $ProverPhone, skProver)[no_precomp]
@@ -213,7 +210,7 @@ rule OIDCTokenForward[color=#B4D9EF]:
   // We do not check the nonce in the ID token. This is to highlight that the
   // inclusion of a true nonce in the ID token is not strictly necessary in the
   // protocols design.
-  , In(tlsServer('POST', ~sessPost, ~secret, <'token', <<$IdP, $App, $Username, nonce, hash>, signature>>)) ]
+  , TLSClient_In('POST', ~sessPost, $IdP, <'token', <<$IdP, $App, $Username, nonce, hash>, signature>>) ]
   --[ Eq(h(fp, salt), hash)
     , Eq(verify(signature, body, pkIdP), true)
     , GetTokenForCode($IdP, ~sessPost, code)
