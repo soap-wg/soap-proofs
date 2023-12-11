@@ -1,4 +1,4 @@
 for arg in "$@"
 do
-  ./batch-run.sh "$arg" "--prove=$arg" &
+  source ./batch-run.sh "$arg" "--prove=$arg" &
 done
