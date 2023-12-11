@@ -120,7 +120,7 @@ rule OIDCIdPIssueCode[color=#B4D9EF]:
     // investigate this at a later point.
     , SOAPIdP($User, nonce, $IdP, $Username) ]->
   [ TLSClient_Out('GET', ~sess, $RedirectURL, <'code', ~code, nonce>)
-  , St_OIDCIdP_Code($IdP, $Username, $Client, ~code, hash, nonce, code_challenge) ]
+  , St_OIDCIdP_Code($IdP, $Username, $Client, $RedirectURL, ~code, hash, nonce, code_challenge) ]
 
 rule OIDCAppCodeRedirect[color=#B4D9EF]:
   // Do not pattern match who the browser session was initiated for. The Messaging
@@ -135,7 +135,7 @@ rule OIDCAppCodeRedirect[color=#B4D9EF]:
   --[ SelfIssued($Prover, nonce)
     , Neq(nonce, 'null')
     , MustBeCode(code) ]->
-  [ TLSClient_Out('POST', ~sessPost, $IdP, <'token_req', code, code_verifier>)
+  [ TLSClient_Out('POST', ~sessPost, $IdP, <'token_req', code, code_verifier, $RedirectURL>)
   , St_OIDCApp_CodeReq($Prover, $IdP, $VerifierPhone, ~sessPost, hash, salt, code)
   , SessionStore($Prover, 'null', 'null') ]
 
@@ -144,7 +144,7 @@ rule OIDCIdPTokenIssue[color=#B4D9EF]:
       token = <tokenBody, sign(tokenBody, idpSk)>
   in
   [ !IdPLtk($IdP, idpSk)
-  , St_OIDCIdP_Code($IdP, $Username, $Client, code, hash, nonce, code_challenge)
+  , St_OIDCIdP_Code($IdP, $Username, $Client, $RedirectURL, code, hash, nonce, code_challenge)
   , TLSServer_In('POST', ~sess, $IdP, <'token_req', code, code_verifier>) ]
   --[ Eq(s256(code_verifier), code_challenge)
     , IssueTokenForCode($IdP, ~sess, code)
