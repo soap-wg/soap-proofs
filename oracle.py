@@ -131,8 +131,12 @@ elif argv[1] == 'Executability':
       if matchesNone(deferList, (num, goal)):
         return num
     return matchAgainstList(deferList, lines)
+  match = matchAgainstList(['!KU( ~'], lines)
+  if match is None:
+    match = defer(['SessionStore'], lines)
 elif argv[1] == 'SOAPAgreement':
   match = matchAgainstList(nonSessionGoals + [
+    '!MessagingApp',
     '!KU( ~sk',
     '∃',
     '∀',
@@ -142,7 +146,6 @@ elif argv[1] == 'SOAPAgreement':
     '!KU( ~idpSk',
     '!KU( ~domain',
     '!KU( ~sessPost',
-    '!KU( ~adversarySess',
     '!KU( ~signalApp',
     '!KU( ~code',
     '\'fwd_token\'',
@@ -151,6 +154,7 @@ elif argv[1] == 'SOAPAgreement':
     '\'token\'',
     '\'login\'',
     '!KU( sign',
+    '!KU( ~adversarySess',
   ], lines)
 elif argv[1] == 'IdPChannelSenderInvarianceAgreement':
   match = matchAgainstList(nonSessionGoals + [
