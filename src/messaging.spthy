@@ -1,5 +1,5 @@
 rule KeyServer:
-  [ !Domain($Domain) ]
+  [ !Domain($Domain, ~secret) ]
   --[ OnlyOnce('key_server')
     , IsKeyServer($Domain) ]->
   [ !KeyServer($Domain) ]
@@ -9,34 +9,36 @@ equations : e2eeDec(e2ee(sks, pk(skr), m), skr) = m
 
 rule MessagingRegister[color=#FDFD96]:
   [ Fr(~sk), Fr(~sess)
-  , !Phone($A, $Number), !KeyServer($KeyServer) ]
+  , !Phone($A, $Number)
+  , !KeyServer($KeyServer), !Domain($KeyServer, ~secret) ]
   --[ IsMessagingKey(~sk) ]->
-  [ TLSClient_Out('GET', ~sess, $KeyServer, <'msg_signup_req', $Number, pk(~sk)>)
+  [ Out(tlsClient('GET', ~sess, cert(~secret), <'msg_signup_req', $Number, pk(~sk)>))
   , Out(pk(~sk))
   , St_MessagingReg_App($A, $Number, ~sess, ~sk) ]
 
 rule MessagingChallenge[color=#FDFD96]:
   [ Fr(~challenge)
-  , !KeyServer($Server)
-  , TLSServer_In('GET', ~sess, $Server, <'msg_signup_req', $Number, ltk>) ]
+  , !KeyServer($Server), !Domain($Server, ~secret)
+  , In(tlsClient('GET', ~sess, cert(~secret), <'msg_signup_req', $Number, ltk>)) ]
   --[ IsOTP(~challenge) ]->
   [ SMS_Out($Number, ~challenge)
   , St_SigReg_Server(~sess, $Number, ltk, ~challenge) ]
 
 rule MessagingRespond[color=#FDFD96]:
-  [ !KeyServer($Server), St_MessagingReg_App($A, $Number, ~sess, sk)
+  [ !KeyServer($Server), !Domain($Server, ~secret)
+  , St_MessagingReg_App($A, $Number, ~sess, sk)
   , SMS_In($Number, challenge) ]
   --[ MustBeOTP(challenge) ]->
-  [ TLSClient_Out('GET', ~sess, $Server, <'otp_respond', challenge>)
+  [ Out(tlsClient('GET', ~sess, cert(~secret), <'otp_respond', challenge>))
   , St_MessagingReg_AppWait($A, $Number, ~sess, sk) ]
 
 rule MessagingAck[color=#FDFD96]:
-  [ !KeyServer($Server)
+  [ !KeyServer($Server), !Domain($Server, ~secret)
   , St_SigReg_Server(~sess, $Number, ltk, challenge)
-  , TLSServer_In('GET', ~sess, $Server, <'otp_respond', challenge>) ]
+  , In(tlsClient('GET', ~sess, cert(~secret), <'otp_respond', challenge>)) ]
   --[ MessagingKeyServer($Number, ltk) ]->
   [ !MessagingLtkServer($Number, ltk)
-  , TLSServer_Out('GET', ~sess, $Server, 'msg_signup_ack') ]
+  , Out(tlsServer('GET', ~sess, ~secret, 'msg_signup_ack')) ]
 
 restriction KeysUnique:
   "All phone ltk1 ltk2 #a #b. MessagingKeyServer(phone, ltk1) @ #a
@@ -44,9 +46,9 @@ restriction KeysUnique:
   ==> #a = #b & ltk1 = ltk2"
 
 rule MessagingFin[color=#FDFD96]:
-  [ !KeyServer($Server)
+  [ !KeyServer($Server), !Domain($Server, ~secret)
   , St_MessagingReg_AppWait($A, $Number, ~sess, sk)
-  , TLSClient_In('GET', ~sess, $Server, 'msg_signup_ack') ]
+  , In(tlsServer('GET', ~sess, ~secret, 'msg_signup_ack')) ]
   --[ ClaimMessagingKey($A, $Number, sk) ]->
   [ !MessagingLtkUser($A, $Number, sk)[no_precomp] ]
 
@@ -58,21 +60,21 @@ rule MessagingCompromise[color=#FF6961]:
 
 rule MessagingKeyRequest[color=#9AD5D8]:
   [ !MessagingLtkServer($Number, ltk)
-  , !KeyServer($Server)
-  , TLSServer_In('GET', ~sess, $Server, <'msg_key_req', $Number>) ]
+  , !KeyServer($Server), !Domain($Server, ~secret)
+  , In(tlsClient('GET', ~sess, cert(~secret), <'msg_key_req', $Number>)) ]
   --[ MustBeMessagingKey(ltk) ]->
-  [ TLSServer_Out('GET', ~sess, $Server, <'msg_key_resp', $Number, ltk>) ]
+  [ Out(tlsServer('GET', ~sess, ~secret, <'msg_key_resp', $Number, ltk>)) ]
 
 rule ObtainKey[color=#9AD5D8]:
-  [ Fr(~sess), !KeyServer($Server) ]
+  [ Fr(~sess), !KeyServer($Server), !Domain($Server, ~secret) ]
   -->
-  [ TLSClient_Out('GET', ~sess, $Server, <'msg_key_req', $Phone>)
+  [ Out(tlsClient('GET', ~sess, cert(~secret), <'msg_key_req', $Phone>))
   , St_KeyReq($A, $Phone, ~sess) ]
 
 rule ObtainKeyFin[color=#9AD5D8]:
-  [ !KeyServer($Server)
+  [ !KeyServer($Server), !Domain($Server, ~secret)
   , St_KeyReq($A, $Phone, ~sess)
-  , TLSClient_In('GET', ~sess, $Server, <'msg_key_resp', $Phone, ltk>) ]
+  , In(tlsServer('GET', ~sess, ~secret, <'msg_key_resp', $Phone, ltk>)) ]
   -->
   [ !UseMessagingKeyFor($A, $Phone, ltk)[no_precomp] ]
 

@@ -1,5 +1,5 @@
 rule IdPSetup:
-  [ !Domain($IdP), Fr(~idpSk) ]
+  [ !Domain($IdP, ~secret), Fr(~idpSk) ]
   -->
   [ !IdP($IdP), !IdPLtk($IdP, ~idpSk)
   , Out(pk(~idpSk)) ]
@@ -11,20 +11,22 @@ rule IdPCompromise[color=#FF6961]:
   [ !IdPCompromise($IdP), Out(idpSk) ]
 
 rule IdPKeyRequest[color=#9AD5D8]:
-  [ !IdP($IdP), Fr(~sess) ]
+  [ !IdP($IdP), !Domain($IdP, ~domainSecret), Fr(~sess) ]
   -->
-  [ TLSClient_Out('GET', ~sess, $IdP, 'pk_req')
+  [ Out(tlsClient('GET', ~sess, cert(~domainSecret), 'pk_req'))
   , St_IdPKeyReq($IdP, ~sess) ]
 
 rule IdPPkDistribute[color=#9AD5D8]:
-  [ TLSServer_In('GET', ~sess, $IdP, 'pk_req')
+  [ !Domain($IdP, ~domainSecret)
+  , In(tlsClient('GET', ~sess, cert(~domainSecret), 'pk_req'))
   , !IdPLtk($IdP, idpSk) ]
   -->
-  [ TLSServer_Out('GET', ~sess, $IdP, <'idp_pk', pk(idpSk)>) ]
+  [ Out(tlsServer('GET', ~sess, ~domainSecret, <'idp_pk', pk(idpSk)>)) ]
 
 rule IdPKeyObtain[color=#9AD5D8]:
-  [ St_IdPKeyReq($IdP, ~sess)
-  , TLSClient_In('GET', ~sess, $IdP, <'idp_pk', idpPk>) ]
+  [ !Domain($IdP, ~domainSecret)
+  , St_IdPKeyReq($IdP, ~sess)
+  , In(tlsServer('GET', ~sess, ~domainSecret, <'idp_pk', idpPk>)) ]
   -->
   [ !UseIdPKey($User, $IdP, idpPk) ]
 
@@ -47,17 +49,25 @@ rule IdPAccountCompromise[color=#FF6961]:
 
 rule IdPPublishClient:
   [ Fr(~sess), Fr(~m)
-  , !IdPAccount($A, $IdP, $Username, ~pw) ]
+  , !IdPAccount($A, $IdP, $Username, ~pw)
+  , !Domain($IdP, ~domainSecret) ]
   --[ SendIdP($IdP, $Username, ~m)
-    , Sender($A) ]->
-  [ TLSClient_Out('GET', ~sess, $IdP, <'publish', $Username, ~pw, ~m>) ]
+    , Sender($A)
+    , IsMessage(~m) ]->
+  [ Out(tlsClient('GET', ~sess, cert(~domainSecret), <'publish', $Username, ~pw, ~m>)) ]
 
 rule IdPPublishServer:
   [ !IdPAccount(p, $IdP, $Username, ~pw)
-  , TLSServer_In('GET', ~sess, $IdP, <'publish', $Username, ~pw, m>) ]
-  -->
+  , !Domain($IdP, ~domainSecret)
+  , In(tlsClient('GET', ~sess, cert(~domainSecret), <'publish', $Username, ~pw, m>)) ]
+  --[ MustBeMessage(m) ]->
   [ Out(m)
   , !Publish($IdP, $Username, m) ]
+
+lemma MessageSources[sources]:
+  "All m #t. MustBeMessage(m) @ #t
+    ==> ( (Ex #x. IsMessage(m) @ #x & #x < #t)
+        | (Ex #x. KU(m) @ #x & #x < #t))"
 
 rule IdPPublishCompromised:
   [ !IdPCompromise($IdP), In(m) ]
