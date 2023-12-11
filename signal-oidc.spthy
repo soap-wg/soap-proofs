@@ -145,7 +145,7 @@ rule OIDCIdPTokenIssue[color=#B4D9EF]:
   in
   [ !IdPLtk($IdP, idpSk)
   , St_OIDCIdP_Code($IdP, $Username, $Client, $RedirectURL, code, hash, nonce, code_challenge)
-  , TLSServer_In('POST', ~sess, $IdP, <'token_req', code, code_verifier>) ]
+  , TLSServer_In('POST', ~sess, $IdP, <'token_req', code, code_verifier, $RedirectURL>) ]
   --[ Eq(s256(code_verifier), code_challenge)
     , IssueTokenForCode($IdP, ~sess, code)
     , MustBeToken(token)
