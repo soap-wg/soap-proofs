@@ -240,18 +240,18 @@ lemma CodeIsSingleUse[reuse]:
 
 rule OIDCTokenReceive[color=#B4D9EF]:
   let body = <$IdP, $App, $Username, nonce, hash>
-      fp = fingerprint(<pkProver, pk(skVerifier)>)
+      fp = fingerprint(<pk(skProver), pk(skVerifier)>)
   in
   [ !MessagingLtkUser($Verifier, $VerifierPhone, skVerifier)[no_precomp]
-  , !UseMessagingKeyFor($Verifier, $ProverPhone, pkProver)[no_precomp]
+  , !UseMessagingKeyFor($Verifier, $ProverPhone, pk(skProver))[no_precomp]
   , !MessagingApp($App)
   , !UseIdPKey($Verifier, $IdP, pkIdP)
-  , E2EE_In(pkProver, pk(skVerifier), <'fwd_token', <body, signature>, salt>) ]
+  , In(e2ee(skProver, pk(skVerifier), <'fwd_token', <body, signature>, salt>)) ]
   --[ Eq(h(fp, salt), hash)
     , Eq(verify(signature, body, pkIdP), true)
     , DidNotIssueSelf($Verifier, nonce)
     , ReceivingKey(pk(skVerifier))
-    , AssociateAs($Verifier, pkProver, $IdP, $Username) ]->
+    , AssociateAs($Verifier, pk(skProver), $IdP, $Username) ]->
   []
 
 restriction CheckNonceReplay:

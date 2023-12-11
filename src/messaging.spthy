@@ -4,26 +4,8 @@ rule KeyServer:
     , IsKeyServer($Domain) ]->
   [ !KeyServer($Domain) ]
 
-rule E2EEOut[color=#FFFFFF]:
-  [ E2EE_Out(pkSender, pkReceiver, msg) ]
-  -->
-  [ !E2EE(pkSender, pkReceiver, msg) ]
-
-rule E2EEAdversaryOut[color=#FF6961]:
-  [ In(skSender), In(pkReceiver), In(msg) ]
-  -->
-  [ !E2EE(pk(skSender), pkReceiver, msg) ]
-
-rule E2EEIn[color=#FFFFFF]:
-  [ !E2EE(pkSender, pkReceiver, msg) ]
-  -->
-  [ E2EE_In(pkSender, pkReceiver, msg) ]
-
-rule E2EEAdversaryIn[color=#FF6961]:
-  [ In(skReceiver)
-  , !E2EE(pkSender, pk(skReceiver), msg) ]
-  -->
-  [ Out(msg) ]
+functions: e2ee/3, e2eeDec/2
+equations : e2eeDec(e2ee(sks, pk(skr), m), skr) = m
 
 rule MessagingRegister[color=#FDFD96]:
   [ Fr(~sk), Fr(~sess)
@@ -105,12 +87,12 @@ rule MessagingSend:
   --[ SendMessaging(pk(~sk), ltk, m)
     , Sender($A)
     , SendTo($PeerPhone, 'messaging', m) ]->
-  [ E2EE_Out(pk(~sk), ltk, m) ]
+  [ Out(e2ee(~sk, ltk, m)) ]
 
 rule MessagingReceive:
-  [ !MessagingLtkUser($A, $MyPhone, ~skr)[no_precomp], !UseMessagingKeyFor($A, $PeerPhone, pkPeer)[no_precomp]
-  , E2EE_In(pkPeer, pk(~skr), m) ]
-  --[ ReceiveMessaging(pkPeer, pk(~skr), m) ]->
+  [ !MessagingLtkUser($A, $MyPhone, ~skr)[no_precomp], !UseMessagingKeyFor($A, $PeerPhone, pk(skPeer))[no_precomp]
+  , In(e2ee(skPeer, pk(~skr), m)) ]
+  --[ ReceiveMessaging(pk(skPeer), pk(~skr), m) ]->
   []
 
 lemma MessagingExecutability:
