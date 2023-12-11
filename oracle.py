@@ -142,6 +142,7 @@ elif argv[1] == 'SOAPAgreement':
     '!KU( ~idpSk',
     '!KU( ~domain',
     '!KU( ~sessPost',
+    '!KU( ~adversarySess',
     '!KU( ~signalApp',
     '!KU( ~code',
     '\'fwd_token\'',
