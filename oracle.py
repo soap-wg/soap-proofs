@@ -45,6 +45,8 @@ nonSessionGoals = [
 match = None
 if argv[1] == 'TokenFormatAndOTPLearning':
   match = matchAgainstList([
+    'last',
+    '∀',
     'MustBe',
     '\'oidc_req\'',
     '\'token\'',
@@ -57,7 +59,6 @@ if argv[1] == 'TokenFormatAndOTPLearning':
     'GenCode',
     'GenNonce',
     '∃',
-    '∀',
     '~~>',
     re.compile(r'SessionStore\(.+nonce'),
     '\'login\'',
@@ -156,11 +157,11 @@ elif argv[1] == 'SOAPAgreement':
     '!KU( sign',
     '!KU( ~adversarySess',
   ], lines)
-elif argv[1] == 'IdPChannelSenderInvarianceAgreement':
+elif argv[1] == 'IdPChannelSenderInvariance':
   match = matchAgainstList(nonSessionGoals + [
     '!KU( ~pw',
   ], lines)
-elif argv[1] == 'MessagingSenderInvarianceAgreement':
+elif argv[1] == 'MessagingSenderInvariance':
   match = matchAgainstList(nonSessionGoals + [
     '!KU( ~sk',
     '!KU( ~challenge',
@@ -169,6 +170,8 @@ elif argv[1] == 'MessagingSenderInvarianceAgreement':
     'E2EE_In',
     'St_SigReg_Server',
     '\'otp_respond\'',
+    '!KU( ~sess',
+    'TLSServer_In',
   ], lines)
 
 if match is not None:
