@@ -66,7 +66,8 @@ rule IdPPublishCompromised:
 
 rule IdPRead:
   [ !Publish($IdP, $Username, m) ]
-  --[ ReceiveIdP($IdP, $Username, m) ]->
+  --[ ReceiveIdP($IdP, $Username, m)
+    , Receiver($A) ]->
   []
 
 lemma PublishExecutability:

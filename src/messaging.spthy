@@ -92,7 +92,8 @@ rule MessagingSend:
 rule MessagingReceive:
   [ !MessagingLtkUser($A, $MyPhone, ~skr)[no_precomp], !UseMessagingKeyFor($A, $PeerPhone, pk(skPeer))[no_precomp]
   , In(e2ee(skPeer, pk(~skr), m)) ]
-  --[ ReceiveMessaging(pk(skPeer), pk(~skr), m) ]->
+  --[ ReceiveMessaging(pk(skPeer), pk(~skr), m)
+    , Receiver($A) ]->
   []
 
 lemma MessagingExecutability:

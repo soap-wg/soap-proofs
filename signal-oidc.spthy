@@ -251,7 +251,7 @@ rule OIDCTokenReceive[color=#B4D9EF]:
     , Eq(verify(signature, body, pkIdP), true)
     , DidNotIssueSelf($Verifier, nonce)
     , ReceivingKey(pk(skVerifier))
-    , AssociateAs($Verifier, pk(skProver), $IdP, $Username) ]->
+    , Correspond($Verifier, pk(skProver), $IdP, $Username) ]->
   []
 
 restriction CheckNonceReplay:
@@ -263,7 +263,7 @@ lemma Executability:
   exists-trace
   "Ex verifier proverKey idp acc verifierKey m1 m2 s1 s2
     #t1 #t2 #t3 #t4 #t5.
-      AssociateAs(verifier, proverKey, idp, acc) @ #t1
+      Correspond(verifier, proverKey, idp, acc) @ #t1
     & ReceiveMessaging(proverKey, verifierKey, m1) @ #t2
     & ReceiveIdP(idp, acc, m2) @ #t3
     & SendMessaging(proverKey, verifierKey, m1) @ #t4
@@ -275,7 +275,7 @@ lemma Executability:
 
 lemma SOAPAgreement[reuse]:
   "All v proverKey idp acc verifierKey #t1.
-        ( AssociateAs(v, proverKey, idp, acc) @ #t1
+        ( Correspond(v, proverKey, idp, acc) @ #t1
         & ReceivingKey(verifierKey) @ #t1)
     ==>   (Ex prover nonce #x1 #x2.
               SOAPStart(prover, nonce) @ #x1
@@ -291,13 +291,13 @@ lemma SOAPAgreement[reuse]:
         | (Ex p #x. CompromisedMessaging(p, proverKey) @ #x)"
 
 lemma SocialAuthentication:
-  "All v proverKey verifierKey m1 idp acc m2 #t1 #t2 #t3.
-        ( AssociateAs(v, proverKey, idp, acc) @ #t1
-        & ReceiveMessaging(proverKey, verifierKey, m1) @ #t2
-        & ReceiveIdP(idp, acc, m2) @ #t3)
+  "All v sendKey rcvKey m1 idp acc m2 #t #r1 #r2.
+        ( Correspond(v, sendKey, idp, acc) @ #t
+        & ReceiveMessaging(sendKey, rcvKey, m1) @ #r1 & Receiver(v) @ #r1
+        & ReceiveIdP(idp, acc, m2) @ #r2 & Receiver(v) @ #r2)
     ==> ( (Ex s #x1 #x2.
-          ( SendMessaging(proverKey, verifierKey, m1) @ #x1 & Sender(s) @ #x1
-          & SendIdP(idp, acc, m2) @ #x2 & Sender(s) @ #x2))
+          ( SendMessaging(sendKey, rcvKey, m1) @ #x1 & Sender(s) @ #x1 & #x1 < #r1
+          & SendIdP(idp, acc, m2) @ #x2 & Sender(s) @ #x2 & #x2 < #r2))
         | (Ex #x. CompromisedIdP(idp) @ #x)
         | (Ex #x. CompromisedDomain(idp) @ #x)
         | (Ex app redirectURL #x #y #z.
@@ -305,6 +305,6 @@ lemma SocialAuthentication:
             & IsRedirectURL(idp, app, redirectURL) @ #y
             & CompromisedDomain(redirectURL) @ #z)
         | (Ex p #x. CompromisedAccount(p, idp, acc) @ #x)
-        | (Ex p #x. CompromisedMessaging(p, proverKey) @ #x))"
+        | (Ex p #x. CompromisedMessaging(p, sendKey) @ #x))"
 
 end
