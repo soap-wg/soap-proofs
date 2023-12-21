@@ -293,8 +293,8 @@ lemma SOAPAgreement[reuse]:
 lemma SocialAuthentication:
   "All v sendKey rcvKey m1 idp acc m2 #t #r1 #r2.
         ( Correspond(v, sendKey, idp, acc) @ #t
-        & ReceiveMessaging(sendKey, rcvKey, m1) @ #r1 & Receiver(v) @ #r1
-        & ReceiveIdP(idp, acc, m2) @ #r2 & Receiver(v) @ #r2)
+        & ReceiveMessaging(sendKey, rcvKey, m1) @ #r1
+        & ReceiveIdP(idp, acc, m2) @ #r2)
     ==> ( (Ex s #x1 #x2.
           ( SendMessaging(sendKey, rcvKey, m1) @ #x1 & Sender(s) @ #x1 & #x1 < #r1
           & SendIdP(idp, acc, m2) @ #x2 & Sender(s) @ #x2 & #x2 < #r2))
