@@ -238,7 +238,7 @@ lemma CodeIsSingleUse[reuse]:
               IsRedirectURL(idp, app, url) @ #x
             & CompromisedDomain(url) @ #y))"
 
-rule OIDCTokenReceive[color=#B4D9EF,no_derivcheck]:
+rule OIDCTokenReceive[color=#B4D9EF]:
   let body = <$IdP, $App, $Username, nonce, hash>
       fp = fingerprint(<pk(skProver), pk(skVerifier)>)
   in

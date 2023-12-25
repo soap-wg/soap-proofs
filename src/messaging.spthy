@@ -89,7 +89,7 @@ rule MessagingSend:
     , SendTo($PeerPhone, 'messaging', m) ]->
   [ Out(e2ee(~sk, ltk, m)) ]
 
-rule MessagingReceive[no_derivcheck]:
+rule MessagingReceive:
   [ !MessagingLtkUser($A, $MyPhone, ~skr)[no_precomp], !UseMessagingKeyFor($A, $PeerPhone, pk(skPeer))[no_precomp]
   , In(e2ee(skPeer, pk(~skr), m)) ]
   --[ ReceiveMessaging(pk(skPeer), pk(~skr), m) ]->
