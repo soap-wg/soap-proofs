@@ -95,18 +95,4 @@ rule MessagingReceive:
   --[ ReceiveMessaging(pk(skPeer), pk(~skr), m) ]->
   []
 
-lemma MessagingExecutability:
-  exists-trace
-  "Ex senderPhone myPhone m #t.
-      ReceiveMessaging(senderPhone, myPhone, m) @ #t
-    & (not Ex #x. SomeCompromise() @ #x)"
-
 predicates: KeyServerCompromise() <=> Ex d #x #y. IsKeyServer(d) @ #x & CompromisedDomain(d) @ #y
-
-lemma MessagingSenderInvariance:
-  "All senderKey myKey m #t.
-        ( ReceiveMessaging(senderKey, myKey, m) @ #t)
-    ==> ( (Ex #x. SendMessaging(senderKey, myKey, m) @ #x)
-        | KeyServerCompromise()
-        | (Ex #x. SMSLeak() @ #x)
-        | (Ex s #x. CompromisedMessaging(s, senderKey) @ #x))"

@@ -11,4 +11,18 @@ lemma OTPChallenge[sources]:
     ==>   (Ex #x. KU(challenge) @ #x & #x < #t)
         | (Ex #x. IsOTP(challenge) @ #x)"
 
+lemma MessagingExecutability:
+  exists-trace
+  "Ex senderPhone myPhone m #t.
+      ReceiveMessaging(senderPhone, myPhone, m) @ #t
+    & (not Ex #x. SomeCompromise() @ #x)"
+
+lemma MessagingSenderInvariance:
+  "All senderKey myKey m #t.
+        ( ReceiveMessaging(senderKey, myKey, m) @ #t)
+    ==> ( (Ex #x. SendMessaging(senderKey, myKey, m) @ #x)
+        | KeyServerCompromise()
+        | (Ex #x. SMSLeak() @ #x)
+        | (Ex s #x. CompromisedMessaging(s, senderKey) @ #x))"
+
 end

@@ -5,4 +5,18 @@ begin
 #include "../src/tls.spthy"
 #include "../src/idp.spthy"
 
+lemma PublishExecutability:
+  exists-trace
+  "Ex user idp m #t.
+       ReceiveIdP(idp, user, m) @ #t
+    & (not Ex #x. SomeCompromise() @ #x)"
+
+lemma IdPChannelSenderInvariance:
+  "All user idp m #t.
+        ReceiveIdP(idp, user, m) @ #t
+    ==>   (Ex #x. SendIdP(idp, user, m) @ #x)
+        | (Ex #x. CompromisedIdP(idp) @ #x)
+        | (Ex #x. CompromisedDomain(idp) @ #x)
+        | (Ex p #x. CompromisedAccount(p, idp, user) @ #x)"
+
 end

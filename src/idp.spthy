@@ -68,17 +68,3 @@ rule IdPRead:
   [ !Publish($IdP, $Username, m) ]
   --[ ReceiveIdP($IdP, $Username, m) ]->
   []
-
-lemma PublishExecutability:
-  exists-trace
-  "Ex user idp m #t.
-       ReceiveIdP(idp, user, m) @ #t
-    & (not Ex #x. SomeCompromise() @ #x)"
-
-lemma IdPChannelSenderInvariance:
-  "All user idp m #t.
-        ReceiveIdP(idp, user, m) @ #t
-    ==>   (Ex #x. SendIdP(idp, user, m) @ #x)
-        | (Ex #x. CompromisedIdP(idp) @ #x)
-        | (Ex #x. CompromisedDomain(idp) @ #x)
-        | (Ex p #x. CompromisedAccount(p, idp, user) @ #x)"
