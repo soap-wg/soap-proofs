@@ -6,7 +6,7 @@ rule Domain:
 rule DomainCompromise:
   [ !Domain($Domain) ]
   --[ CompromisedDomain($Domain)
-    , SomeCompromise() ]->
+    , AdversaryActivity() ]->
   [ !DomainCompromise($Domain) ]
 
 rule TLSClientOut[color=#FFFFFF]:
@@ -26,7 +26,7 @@ rule TLSServerOut[color=#FFFFFF]:
 
 rule TLSAdversaryServerOut[color=#FF6961]:
   [ In(method), In(~sess), In(msg), !DomainCompromise($Domain) ]
-  -->
+  --[ AdversaryActivity() ]->
   [ !TLSServer(method, ~sess, $Domain, msg) ]
 
 rule TLSClientToServer[color=#FFFFFF]:
@@ -37,7 +37,7 @@ rule TLSClientToServer[color=#FFFFFF]:
 rule TLSClientToAdversaryServer[color=#FF6961]:
   [ !TLSClient(method, ~sess, $Domain, msg)
   , !DomainCompromise($Domain) ]
-  -->
+  --[ AdversaryActivity() ]->
   [ Out(msg), Out(~sess) ]
 
 rule TLSServerToClient[color=#FFFFFF]:
@@ -47,5 +47,5 @@ rule TLSServerToClient[color=#FFFFFF]:
 
 rule TLSServerToAdversaryClient[color=#FF6961]:
   [ In(~adversarySess), !TLSServer(method, ~adversarySess, $Domain, msg) ]
-  -->
+  --[ AdversaryActivity() ]->
   [ Out(msg) ]

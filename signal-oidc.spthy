@@ -53,7 +53,7 @@ rule ClearSessionStore:
 // be unrealistic.
 rule LinkClick[color=#FF6961]:
   [ Fr(~sess), In(m), !Domain($Domain) ]
-  --[ SomeCompromise() ]->
+  --[ AdversaryActivity() ]->
   [ TLSClient_Out('GET', ~sess, $Domain, m)
   , !Browser($Prover, ~sess) ]
 
@@ -269,7 +269,7 @@ lemma Executability:
     & SendIdP(idp, acc, m2) @ #t5
     & Sender(s2) @ #t5
     & s1 = s2
-    & (not Ex #x. SomeCompromise() @ #x)"
+    & (not Ex #x. AdversaryActivity() @ #x)"
 
 lemma SOAPAgreement[reuse]:
   "All v proverKey idp acc verifierKey #t1.

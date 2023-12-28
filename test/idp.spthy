@@ -9,7 +9,7 @@ lemma PublishExecutability:
   exists-trace
   "Ex user idp m #t.
        ReceiveIdP(idp, user, m) @ #t
-    & (not Ex #x. SomeCompromise() @ #x)"
+    & (not Ex #x. AdversaryActivity() @ #x)"
 
 lemma IdPChannelSenderInvariance:
   "All user idp m #t.

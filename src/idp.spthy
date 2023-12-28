@@ -7,7 +7,7 @@ rule IdPSetup:
 rule IdPCompromise[color=#FF6961]:
   [ !IdPLtk($IdP, idpSk) ]
   --[ CompromisedIdP($IdP)
-    , SomeCompromise() ]->
+    , AdversaryActivity() ]->
   [ !IdPCompromise($IdP), Out(idpSk) ]
 
 rule IdPKeyRequest[color=#9AD5D8]:
@@ -43,7 +43,7 @@ restriction AccountsUnique:
 rule IdPAccountCompromise[color=#FF6961]:
   [ !IdPAccount($A, $IdP, $Username, ~pw) ]
   --[ CompromisedAccount($A, $IdP, $Username)
-    , SomeCompromise() ]->
+    , AdversaryActivity() ]->
   [ Out(~pw) ]
 
 rule IdPPublishClient:
@@ -62,7 +62,7 @@ rule IdPPublishServer:
 
 rule IdPPublishCompromised:
   [ !IdPCompromise($IdP), In(m) ]
-  -->
+  --[ AdversaryActivity() ]->
   [ !Publish($IdP, $Username, m) ]
 
 rule IdPRead:

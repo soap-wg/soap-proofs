@@ -61,7 +61,7 @@ rule MessagingFin[color=#FDFD96]:
 rule MessagingCompromise[color=#FF6961]:
   [ !MessagingLtkUser($A, $Number, ~sk)[no_precomp] ]
   --[ CompromisedMessaging($A, pk(~sk))
-    , SomeCompromise() ]->
+    , AdversaryActivity() ]->
   [ Out(~sk) ]
 
 rule MessagingKeyRequest[color=#9AD5D8]:

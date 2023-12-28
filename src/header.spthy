@@ -26,7 +26,7 @@ rule SMSOut[color=#FFFFFF]:
 
 rule AdversarySMSOut[color=#FF6961]:
   [ In(sms), !Phone($A, $Number) ]
-  -->
+  --[ AdversaryActivity() ]->
   [ !SMS($Number, sms) ]
 
 rule SMSIn[color=#FFFFFF]:
@@ -37,5 +37,5 @@ rule SMSIn[color=#FFFFFF]:
 rule SMSLeak[color=#FF6961]:
   [ !SMS($Number, sms) ]
   --[ SMSLeak()
-    , SomeCompromise() ]->
+    , AdversaryActivity() ]->
   [ Out(sms) ]

@@ -15,7 +15,7 @@ lemma MessagingExecutability:
   exists-trace
   "Ex senderPhone myPhone m #t.
       ReceiveMessaging(senderPhone, myPhone, m) @ #t
-    & (not Ex #x. SomeCompromise() @ #x)"
+    & (not Ex #x. AdversaryActivity() @ #x)"
 
 lemma MessagingSenderInvariance:
   "All senderKey myKey m #t.
