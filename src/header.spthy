@@ -14,7 +14,7 @@ functions: fingerprint/1, extract/1, s256/1, h/2
 equations: extract(fingerprint(x)) = x
 
 rule Phone:
-  [ Fr(~sim) ]
+  []
   --[ ClaimNumber($A, $Number)
     , IsPhoneNumber($Number) ]->
   [ !Phone($A, $Number) ]
