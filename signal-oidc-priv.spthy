@@ -1,41 +1,106 @@
-theory SignalOIDCPrivacy
+theory MessagingOIDCPrivacy
 begin
 
-functions: fingerprint/1, s256/1, h/2, pk/1
-equations: fingerprint(x) = x
+restriction OnlyOnce:
+  "All t #x #y. OnlyOnce(t) @ #x & OnlyOnce(t) @ #y ==> #x = #y"
 
-rule SignalKeyGen:
-  [] --> [ !SignalLtk($U, $SK) ]
+restriction Equality:
+  "All x y #i. Eq(x, y) @ #i ==> x = y"
 
-rule Account:
-  [] --> [ !Account($U, $PW) ]
+restriction Inequality:
+  "All x #t. Neq(x, x) @ #t ==> F"
+
+functions: fingerprint/1, extract/1, s256/1, h/2, pk/1
+
+// Fingerprint function only needs to be collision resistant
+equations: extract(fingerprint(x)) = x
+
+rule MessagingKeyGen:
+  [ Fr(~sk) ]
+  -->
+  [ !MessagingLtk($User, ~sk) ]
+
+rule AccountCreation:
+  []
+  -->
+  // Use public value for password because the IdP is the adversary, i.e., knows
+  // the password.
+  [ !Account($Username, $PW) ]
+
+// Clients need to memorize which query they issued last. We prefix rule name
+// with 0_ s.t. it comes first in case ordering (which is alphabetical) of the
+// executability lemma. Otherwise, there is an infinite loop.
+rule 0_InitSessionStore:
+  []
+  --[ OnlyOnce(<'init_session_store', $User>) ]->
+  [ SessionStore($User, 'null', 'null') ]
+
+rule ClearSessionStore:
+  [ SessionStore($User, x, y) ]
+  -->
+  [ SessionStore($User, 'null', 'null') ]
 
 // OpenID Connect Auth code + PKCE flow
-rule OIDCAppInit:
+rule OIDCAppLaunchBrowser[color=#B4D9EF]:
   let fp = fingerprint(<pk(skProver), pk(skVerifier)>)
-      fpDiff= fingerprint(<pk(skDiffProver), pk(skDiffVerifier)>)
-      hash = h(diff(fp, fpDiff), salt)
+      fakeFp = fingerprint(<pk(skA), pk(skB)>)
+      hash = h(diff(fp, fakeFp), salt)
       code_challenge = s256(code_verifier)
   in
-  [ !SignalLtk($Prover, skProver)
-  , !SignalLtk($DiffProver, skDiffProver)
-  , !Account($Prover, $PW)
-  , !SignalLtk($Verifier, pk(skVerifier))
-  , !SignalLtk($DiffVerifier, pk(skDiffVerifier))
+  [ !MessagingLtk($Prover, skProver)
+  , !MessagingLtk($Verifier, skVerifier)
+  , !MessagingLtk($A, skA)
+  , !MessagingLtk($A, skB)
+  , SessionStore($Prover, drop1, drop2)
   , Fr(salt), Fr(nonce), Fr(code_verifier) ]
   -->
   [ Out(<'oidc_req', hash, nonce, code_challenge>)
-  , SessionStore($Prover, nonce, code_verifier) ]
+  // This Out fact models that the adversary can access authorization requests.
+  , Out(<hash, nonce, code_challenge>)
+  , SessionStore($Prover, nonce, <$Verifier, hash, salt, code_verifier>) ]
 
-rule OIDCAppLogin:
-  [ In('auth_req'), !Account($User, $PW) ]
+rule OIDCIdPInit[color=#B4D9EF]:
+  [ In(<'oidc_req', hash, nonce, code_challenge>) ]
   -->
-  [ Out(<'login', $User, $PW>) ]
+  [ Out('auth_req')
+  , St_OIDCServer_Auth(hash, nonce, code_challenge) ]
 
-rule OIDCAppTokenRequest:
-  [ In(<'code', code, nonce>)
-  , SessionStore($Prover, nonce, code_verifier) ]
+rule OIDCAppLogin[color=#B4D9EF]:
+  [ In('auth_req')
+  , !Account($Username, $PW) ]
   -->
-  [ Out(<'token_req', code, code_verifier>) ]
+  [ Out(<'login', $Username, $PW>) ]
+
+rule OIDCIdPIssueCode[color=#B4D9EF]:
+  [ !Account($Username, $PW)
+  , Fr(~code)
+  , St_OIDCServer_Auth(hash, nonce, code_challenge)
+  , In(<'login', $Username, $PW>) ]
+  -->
+  [ Out(<'code', ~code, nonce>)
+  , St_OIDCIdP_Code($Username, ~code, hash, nonce, code_challenge) ]
+
+rule OIDCAppCodeRedirect[color=#B4D9EF]:
+  [ SessionStore($Prover, nonce, <$Verifier, hash, salt, code_verifier>)
+  , In(<'code', code, nonce>) ]
+  --[ TokenRequestWithCode(code)
+    , Neq(nonce, 'null') ]->
+  [ Out(<'token_req', code, code_verifier>)
+  , SessionStore($Prover, 'null', 'null') ]
+
+rule OIDCIdPTokenIssue[color=#B4D9EF]:
+  let token = <$Username, nonce, hash>
+  in
+  [ St_OIDCIdP_Code($Username, code, hash, nonce, code_challenge)
+  , In(<'token_req', code, code_verifier>) ]
+  --[ Eq(s256(code_verifier), code_challenge)
+    , IssueTokenForCode(code) ]->
+  [ Out(<'token', token>) ]
+
+lemma Executability:
+  exists-trace
+  "Ex code #a #b.
+      TokenRequestWithCode(code) @ #a
+    & IssueTokenForCode(code) @ #b"
 
 end
