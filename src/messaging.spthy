@@ -4,6 +4,13 @@ rule KeyServer:
     , IsKeyServer($Domain) ]->
   [ !KeyServer($Domain) ]
 
+// We use the standard Tamarin secure channel model for SMS and TLS, but not for
+// modelling end-to-end encryption because the standard secure channel model
+// lead to a blow-up in message sources, which prevented us from even starting
+// Tamarin. Therefore, we use a model using an equational theory that is close
+// to asymmetric encryption and signatures combined.
+// The downside of this model is that it is less idiomatic. Sometimes,
+// participants must access other participant's secret key material.
 functions: e2ee/3, e2eeDec/2
 equations : e2eeDec(e2ee(sks, pk(skr), m), skr) = m
 
@@ -38,6 +45,7 @@ rule MessagingAck[color=#FDFD96]:
   [ !MessagingLtkServer($Number, ltk)
   , TLSServer_Out('GET', ~sess, $Server, 'msg_signup_ack') ]
 
+// The key server only stores one key per phone number.
 restriction KeysUnique:
   "All phone ltk1 ltk2 #a #b. MessagingKeyServer(phone, ltk1) @ #a
       & MessagingKeyServer(phone, ltk2) @ #b
@@ -76,6 +84,8 @@ rule ObtainKeyFin[color=#9AD5D8]:
   -->
   [ !UseMessagingKeyFor($A, $Phone, ltk)[no_precomp] ]
 
+// By factoring out the generation of a fresh message, we can use the SendAsTo
+// interface to send the ID token later.
 rule SendInterface:
   [ Fr(~m) ]
   -->

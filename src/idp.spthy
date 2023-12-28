@@ -33,6 +33,7 @@ rule IdPSignUp:
   --[ Username($A, $IdP, $Username, ~pw) ]->
   [ !IdPAccount($A, $IdP, $Username, ~pw) ]
 
+// An IdP does not register the same account multiple times.
 restriction AccountsUnique:
   "All p1 p2 idp u pw1 pw2 #a #b.
         ( Username(p1, idp, u, pw1) @ #a

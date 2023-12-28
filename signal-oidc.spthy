@@ -36,8 +36,8 @@ restriction UniqueRedirectURLs:
     ==> (idp1 = idp2 & app1 = app2)"
 
 // Clients need to memorize which query they issued last. We prefix rule name
-// with 0_ s.t. it comes first in case ordering of the executability lemma.
-// Otherwise, there is an infinite loop.
+// with 0_ s.t. it comes first in case ordering (which is alphabetical) of the
+// executability lemma. Otherwise, there is an infinite loop.
 rule 0_InitSessionStore:
   []
   --[ OnlyOnce(<'init_session_store', $User>) ]->
@@ -50,7 +50,7 @@ rule ClearSessionStore:
 
 // It is necessary handle forwards from the adversary dedicatedly, because
 // otherwise, the adversary can choose the session they forward to. This would
-// be unrealistic, though.
+// be unrealistic.
 rule LinkClick[color=#FF6961]:
   [ Fr(~sess), In(m), !Domain($Domain) ]
   --[ SomeCompromise() ]->
@@ -74,8 +74,7 @@ rule OIDCAppLaunchBrowser[color=#B4D9EF]:
     , SOAPStart($Prover, nonce)
     , SOAPMessaging($Prover, nonce, pkVerifier, pk(skProver)) ]->
   [ TLSClient_Out('GET', ~sess, $IdP, <'oidc_req', $App, hash, nonce, code_challenge, $RedirectURL>)
-  // This Out fact models that the adversary can access authorization requests
-  // (if taken together with the previous Out fact).
+  // This Out fact models that the adversary can access authorization requests.
   , Out(<hash, nonce, code_challenge>)
   , SessionStore($Prover, nonce, <$IdP, $VerifierPhone, hash, salt, code_verifier>)
   , !Browser($Prover, ~sess) ]
@@ -125,9 +124,6 @@ rule OIDCIdPIssueCode[color=#B4D9EF]:
   , St_OIDCIdP_Code($IdP, $Username, $Client, $RedirectURL, ~code, hash, nonce, code_challenge) ]
 
 rule OIDCAppCodeRedirect[color=#B4D9EF]:
-  // Do not pattern match who the browser session was initiated for. The Messaging
-  // app cannot verify this. It is only critical that the adversary could not
-  // choose the session.
   [ !RedirectURL($IdP, $App, $RedirectURL), !IdP($IdP)
   , !MessagingApp($App)
   , Fr(~sessPost)
@@ -221,7 +217,7 @@ rule OIDCTokenForward[color=#B4D9EF]:
     , UsedCode($IdP, code) ]->
   [ SendAsTo($Prover, $VerifierPhone, <'fwd_token', token, salt>)
   // Sending the code models that the adversary can access the authorization
-  // response after the fact.
+  // response after the OpenID Connect protocol termianted successfully.
   , Out(code) ]
 
 lemma CodeAgreement[use_induction,reuse]:
