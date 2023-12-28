@@ -1,9 +1,6 @@
 theory MessagingOIDCPrivacy
 begin
 
-restriction OnlyOnce:
-  "All t #x #y. OnlyOnce(t) @ #x & OnlyOnce(t) @ #y ==> #x = #y"
-
 restriction Equality:
   "All x y #i. Eq(x, y) @ #i ==> x = y"
 
@@ -27,19 +24,6 @@ rule AccountCreation:
   // the password.
   [ !Account($Username, $PW) ]
 
-// Clients need to memorize which query they issued last. We prefix rule name
-// with 0_ s.t. it comes first in case ordering (which is alphabetical) of the
-// executability lemma. Otherwise, there is an infinite loop.
-rule 0_InitSessionStore:
-  []
-  --[ OnlyOnce(<'init_session_store', $User>) ]->
-  [ SessionStore($User, 'null', 'null') ]
-
-rule ClearSessionStore:
-  [ SessionStore($User, x, y) ]
-  -->
-  [ SessionStore($User, 'null', 'null') ]
-
 // OpenID Connect Auth code + PKCE flow
 rule OIDCAppLaunchBrowser[color=#B4D9EF]:
   let fp = fingerprint(<pk(skProver), pk(skVerifier)>)
@@ -51,7 +35,6 @@ rule OIDCAppLaunchBrowser[color=#B4D9EF]:
   , !MessagingLtk($Verifier, skVerifier)
   , !MessagingLtk($A, skA)
   , !MessagingLtk($A, skB)
-  , SessionStore($Prover, drop1, drop2)
   , Fr(salt), Fr(nonce), Fr(code_verifier) ]
   -->
   [ Out(<'oidc_req', hash, nonce, code_challenge>)
@@ -85,8 +68,7 @@ rule OIDCAppCodeRedirect[color=#B4D9EF]:
   , In(<'code', code, nonce>) ]
   --[ TokenRequestWithCode(code)
     , Neq(nonce, 'null') ]->
-  [ Out(<'token_req', code, code_verifier>)
-  , SessionStore($Prover, 'null', 'null') ]
+  [ Out(<'token_req', code, code_verifier>) ]
 
 rule OIDCIdPTokenIssue[color=#B4D9EF]:
   let token = <$Username, nonce, hash>
