@@ -223,37 +223,6 @@ rule (modulo E) IdPRead:
 
   /* has exactly the trivial AC variant */
 
-lemma PublishExecutability:
-  exists-trace
-  "∃ user idp m #t.
-    (ReceiveIdP( idp, user, m ) @ #t) ∧ (¬(∃ #x. SomeCompromise( ) @ #x))"
-/*
-guarded formula characterizing all satisfying traces:
-"∃ user idp m #t.
-  (ReceiveIdP( idp, user, m ) @ #t) ∧ ∀ #x. (SomeCompromise( ) @ #x) ⇒ ⊥"
-*/
-by sorry
-
-lemma IdPChannelSenderInvariance:
-  all-traces
-  "∀ user idp m #t.
-    (ReceiveIdP( idp, user, m ) @ #t) ⇒
-    ((((∃ #x. SendIdP( idp, user, m ) @ #x) ∨
-       (∃ #x. CompromisedIdP( idp ) @ #x)) ∨
-      (∃ #x. CompromisedDomain( idp ) @ #x)) ∨
-     (∃ p #x. CompromisedAccount( p, idp, user ) @ #x))"
-/*
-guarded formula characterizing all counter-examples:
-"∃ user idp m #t.
-  (ReceiveIdP( idp, user, m ) @ #t)
- ∧
-  (∀ #x. (SendIdP( idp, user, m ) @ #x) ⇒ ⊥) ∧
-  (∀ #x. (CompromisedIdP( idp ) @ #x) ⇒ ⊥) ∧
-  (∀ #x. (CompromisedDomain( idp ) @ #x) ⇒ ⊥) ∧
-  (∀ p #x. (CompromisedAccount( p, idp, user ) @ #x) ⇒ ⊥)"
-*/
-by sorry
-
 rule (modulo E) KeyServer:
    [ !Domain( $Domain ) ]
   --[ OnlyOnce( 'key_server' ), IsKeyServer( $Domain ) ]->
@@ -402,42 +371,7 @@ rule (modulo E) MessagingReceive:
 
   /* has exactly the trivial AC variant */
 
-lemma MessagingExecutability:
-  exists-trace
-  "∃ senderPhone myPhone m #t.
-    (ReceiveMessaging( senderPhone, myPhone, m ) @ #t) ∧
-    (¬(∃ #x. SomeCompromise( ) @ #x))"
-/*
-guarded formula characterizing all satisfying traces:
-"∃ senderPhone myPhone m #t.
-  (ReceiveMessaging( senderPhone, myPhone, m ) @ #t)
- ∧
-  ∀ #x. (SomeCompromise( ) @ #x) ⇒ ⊥"
-*/
-by sorry
-
 predicate: KeyServerCompromise( )<=>∃ d #x #y. (IsKeyServer( d ) @ #x) ∧ (CompromisedDomain( d ) @ #y)
-
-lemma MessagingSenderInvariance:
-  all-traces
-  "∀ senderKey myKey m #t.
-    (ReceiveMessaging( senderKey, myKey, m ) @ #t) ⇒
-    ((((∃ #x. SendMessaging( senderKey, myKey, m ) @ #x) ∨
-       (∃ d #x #y. (IsKeyServer( d ) @ #x) ∧ (CompromisedDomain( d ) @ #y))) ∨
-      (∃ #x. SMSLeak( ) @ #x)) ∨
-     (∃ s #x. CompromisedMessaging( s, senderKey ) @ #x))"
-/*
-guarded formula characterizing all counter-examples:
-"∃ senderKey myKey m #t.
-  (ReceiveMessaging( senderKey, myKey, m ) @ #t)
- ∧
-  (∀ #x. (SendMessaging( senderKey, myKey, m ) @ #x) ⇒ ⊥) ∧
-  (∀ d #x #y.
-    (IsKeyServer( d ) @ #x) ∧ (CompromisedDomain( d ) @ #y) ⇒ ⊥) ∧
-  (∀ #x. (SMSLeak( ) @ #x) ⇒ ⊥) ∧
-  (∀ s #x. (CompromisedMessaging( s, senderKey ) @ #x) ⇒ ⊥)"
-*/
-by sorry
 
 rule (modulo E) Client:
    [ ] --> [ !Client( $App ) ]
