@@ -34,7 +34,7 @@ rule OIDCAppLaunchBrowser[color=#B4D9EF]:
   [ !MessagingLtk($Prover, skProver)
   , !MessagingLtk($Verifier, skVerifier)
   , !MessagingLtk($A, skA)
-  , !MessagingLtk($A, skB)
+  , !MessagingLtk($B, skB)
   , Fr(salt), Fr(nonce), Fr(code_verifier) ]
   -->
   [ Out(<'oidc_req', hash, nonce, code_challenge>)
