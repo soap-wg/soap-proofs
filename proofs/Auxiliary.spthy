@@ -28,7 +28,7 @@ restriction Inequality:
 
 
 rule (modulo E) Phone:
-   [ Fr( ~sim ) ]
+   [ ]
   --[ ClaimNumber( $A, $Number ), IsPhoneNumber( $Number ) ]->
    [ !Phone( $A, $Number ) ]
 
@@ -42,7 +42,9 @@ rule (modulo E) SMSOut[color=#ffffff]:
   /* has exactly the trivial AC variant */
 
 rule (modulo E) AdversarySMSOut[color=#ff6961]:
-   [ In( sms ), !Phone( $A, $Number ) ] --> [ !SMS( $Number, sms ) ]
+   [ In( sms ), !Phone( $A, $Number ) ]
+   --[ AdversaryActivity( ) ]->
+    [ !SMS( $Number, sms ) ]
 
   /* has exactly the trivial AC variant */
 
@@ -53,7 +55,7 @@ rule (modulo E) SMSIn[color=#ffffff]:
 
 rule (modulo E) SMSLeak[color=#ff6961]:
    [ !SMS( $Number, sms ) ]
-  --[ SMSLeak( ), SomeCompromise( ) ]->
+  --[ SMSLeak( ), AdversaryActivity( ) ]->
    [ Out( sms ) ]
 
   /* has exactly the trivial AC variant */
@@ -65,7 +67,7 @@ rule (modulo E) Domain:
 
 rule (modulo E) DomainCompromise:
    [ !Domain( $Domain ) ]
-  --[ CompromisedDomain( $Domain ), SomeCompromise( ) ]->
+  --[ CompromisedDomain( $Domain ), AdversaryActivity( ) ]->
    [ !DomainCompromise( $Domain ) ]
 
   /* has exactly the trivial AC variant */
@@ -93,7 +95,7 @@ rule (modulo E) TLSServerOut[color=#ffffff]:
 
 rule (modulo E) TLSAdversaryServerOut[color=#ff6961]:
    [ In( method ), In( ~sess ), In( msg ), !DomainCompromise( $Domain ) ]
-  -->
+  --[ AdversaryActivity( ) ]->
    [ !TLSServer( method, ~sess, $Domain, msg ) ]
 
   /* has exactly the trivial AC variant */
@@ -108,7 +110,7 @@ rule (modulo E) TLSClientToServer[color=#ffffff]:
 rule (modulo E) TLSClientToAdversaryServer[color=#ff6961]:
    [ !TLSClient( method, ~sess, $Domain, msg ), !DomainCompromise( $Domain )
    ]
-  -->
+  --[ AdversaryActivity( ) ]->
    [ Out( msg ), Out( ~sess ) ]
 
   /* has exactly the trivial AC variant */
@@ -124,7 +126,7 @@ rule (modulo E) TLSServerToAdversaryClient[color=#ff6961]:
    [
    In( ~adversarySess ), !TLSServer( method, ~adversarySess, $Domain, msg )
    ]
-  -->
+  --[ AdversaryActivity( ) ]->
    [ Out( msg ) ]
 
   /* has exactly the trivial AC variant */
@@ -138,7 +140,7 @@ rule (modulo E) IdPSetup:
 
 rule (modulo E) IdPCompromise[color=#ff6961]:
    [ !IdPLtk( $IdP, idpSk ) ]
-  --[ CompromisedIdP( $IdP ), SomeCompromise( ) ]->
+  --[ CompromisedIdP( $IdP ), AdversaryActivity( ) ]->
    [ !IdPCompromise( $IdP ), Out( idpSk ) ]
 
   /* has exactly the trivial AC variant */
@@ -187,7 +189,7 @@ restriction AccountsUnique:
 
 rule (modulo E) IdPAccountCompromise[color=#ff6961]:
    [ !IdPAccount( $A, $IdP, $Username, ~pw ) ]
-  --[ CompromisedAccount( $A, $IdP, $Username ), SomeCompromise( ) ]->
+  --[ CompromisedAccount( $A, $IdP, $Username ), AdversaryActivity( ) ]->
    [ Out( ~pw ) ]
 
   /* has exactly the trivial AC variant */
@@ -211,7 +213,7 @@ rule (modulo E) IdPPublishServer:
 
 rule (modulo E) IdPPublishCompromised:
    [ !IdPCompromise( $IdP ), In( m ) ]
-  -->
+  --[ AdversaryActivity( ) ]->
    [ !Publish( $IdP, $Username, m ) ]
 
   /* has exactly the trivial AC variant */
@@ -304,7 +306,7 @@ rule (modulo E) MessagingFin[color=#fdfd96]:
 
 rule (modulo E) MessagingCompromise[color=#ff6961]:
    [ !MessagingLtkUser( $A, $Number, ~sk )[no_precomp] ]
-  --[ CompromisedMessaging( $A, pk(~sk) ), SomeCompromise( ) ]->
+  --[ CompromisedMessaging( $A, pk(~sk) ), AdversaryActivity( ) ]->
    [ Out( ~sk ) ]
 
   /* has exactly the trivial AC variant */
@@ -417,7 +419,7 @@ rule (modulo E) ClearSessionStore:
 
 rule (modulo E) LinkClick[color=#ff6961]:
    [ Fr( ~sess ), In( m ), !Domain( $Domain ) ]
-  --[ SomeCompromise( ) ]->
+  --[ AdversaryActivity( ) ]->
    [ TLSClient_Out( 'GET', ~sess, $Domain, m ), !Browser( $Prover, ~sess ) ]
 
   /* has exactly the trivial AC variant */
@@ -438,14 +440,14 @@ rule (modulo E) OIDCAppLaunchBrowser[color=#b4d9ef]:
   ]->
    [
    TLSClient_Out( 'GET', ~sess, $IdP,
-                  <'oidc_req', $App, h(fingerprint(<pk(skProver), pkVerifier>), salt), 
+                  <'oidc_req', $App, h(fingerprint(<pk(skProver), pkVerifier>), salt),
                    nonce, s256(code_verifier), $RedirectURL>
    ),
-   Out( <h(fingerprint(<pk(skProver), pkVerifier>), salt), nonce, 
+   Out( <h(fingerprint(<pk(skProver), pkVerifier>), salt), nonce,
          s256(code_verifier)>
    ),
    SessionStore( $Prover, nonce,
-                 <$IdP, $VerifierPhone, h(fingerprint(<pk(skProver), pkVerifier>), salt), 
+                 <$IdP, $VerifierPhone, h(fingerprint(<pk(skProver), pkVerifier>), salt),
                   salt, code_verifier>
    ),
    !Browser( $Prover, ~sess )
@@ -690,14 +692,14 @@ rule (modulo E) OIDCIdPTokenIssue[color=#b4d9ef]:
   --[
   Eq( s256(code_verifier), code_challenge ),
   IssueTokenForCode( $IdP, ~sess, code ),
-  MustBeToken( <<$IdP, $Client, $Username, nonce, hash>, 
+  MustBeToken( <<$IdP, $Client, $Username, nonce, hash>,
                 sign(<$IdP, $Client, $Username, nonce, hash>, idpSk)>
   ),
   UseCode( $IdP, $Client, code ), UseCodeVerifierFor( $IdP, code_verifier )
   ]->
    [
    TLSServer_Out( 'POST', ~sess, $IdP,
-                  <'token', <$IdP, $Client, $Username, nonce, hash>, 
+                  <'token', <$IdP, $Client, $Username, nonce, hash>,
                    sign(<$IdP, $Client, $Username, nonce, hash>, idpSk)>
    )
    ]
@@ -1557,10 +1559,10 @@ next
                   ⊥)) )
           case case_1
           solve( TLSClient_In( 'POST', ~sessPost, $IdP,
-                               <'token', 
-                                <$IdP, $App, $Username, nonce, 
-                                 h(fingerprint(<pk(skProver), pkVerifier>), salt)>, 
-                                sign(<$IdP, $App, $Username, nonce, 
+                               <'token',
+                                <$IdP, $App, $Username, nonce,
+                                 h(fingerprint(<pk(skProver), pkVerifier>), salt)>,
+                                sign(<$IdP, $App, $Username, nonce,
                                       h(fingerprint(<pk(skProver), pkVerifier>), salt)>,
                                      x)
                                >
@@ -1718,10 +1720,10 @@ next
       next
         case OIDCTokenForward
         solve( TLSClient_In( 'POST', ~sessPost, $IdP,
-                             <'token', 
-                              <$IdP, $App, $Username, nonce, 
-                               h(fingerprint(<pk(skProver), pkVerifier>), salt)>, 
-                              sign(<$IdP, $App, $Username, nonce, 
+                             <'token',
+                              <$IdP, $App, $Username, nonce,
+                               h(fingerprint(<pk(skProver), pkVerifier>), salt)>,
+                              sign(<$IdP, $App, $Username, nonce,
                                     h(fingerprint(<pk(skProver), pkVerifier>), salt)>,
                                    x)
                              >
@@ -1744,7 +1746,7 @@ next
                        (∃ #h. (IsNonce( nonce ) @ #h) ∧ ¬(last(#h))) )
                   case case_1
                   solve( TLSServer_In( 'GET', ~sess, $IdP,
-                                       <'oidc_req', $App, h(fingerprint(<pk(skProver), pkVerifier>), salt), 
+                                       <'oidc_req', $App, h(fingerprint(<pk(skProver), pkVerifier>), salt),
                                         nonce, s256(code_verifier), $RedirectURL>
                          ) ▶₂ #vr.9 )
                     case TLSClientToServer_case_1
@@ -2260,7 +2262,7 @@ next
                 next
                   case case_2
                   solve( TLSServer_In( 'GET', ~sess, $IdP,
-                                       <'oidc_req', $App, h(fingerprint(<pk(skProver), pkVerifier>), salt), 
+                                       <'oidc_req', $App, h(fingerprint(<pk(skProver), pkVerifier>), salt),
                                         ~n, s256(code_verifier), $RedirectURL>
                          ) ▶₂ #vr.9 )
                     case TLSClientToServer_case_1
@@ -2784,8 +2786,8 @@ next
                        (∃ #h. (IsNonce( ~n ) @ #h) ∧ ¬(last(#h))) )
                   case case_1
                   solve( TLSServer_In( 'GET', ~sess.1, $IdP.1,
-                                       <'oidc_req', $App.1, 
-                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1, 
+                                       <'oidc_req', $App.1,
+                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1,
                                         s256(code_verifier), $RedirectURL.1>
                          ) ▶₂ #vr.9 )
                     case TLSClientToServer_case_1
@@ -3305,8 +3307,8 @@ next
                 next
                   case case_2
                   solve( TLSServer_In( 'GET', ~sess.1, $IdP.1,
-                                       <'oidc_req', $App.1, 
-                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1, 
+                                       <'oidc_req', $App.1,
+                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1,
                                         s256(code_verifier), $RedirectURL.1>
                          ) ▶₂ #vr.9 )
                     case TLSClientToServer_case_1
@@ -3834,7 +3836,7 @@ next
                        (∃ #h. (IsNonce( nonce ) @ #h) ∧ ¬(last(#h))) )
                   case case_1
                   solve( TLSServer_In( 'GET', ~sess, $IdP,
-                                       <'oidc_req', $App, h(fingerprint(<pk(skProver), pkVerifier>), salt), 
+                                       <'oidc_req', $App, h(fingerprint(<pk(skProver), pkVerifier>), salt),
                                         nonce, s256(code_verifier), $RedirectURL>
                          ) ▶₂ #vr.9 )
                     case TLSClientToServer_case_1
@@ -4350,7 +4352,7 @@ next
                 next
                   case case_2
                   solve( TLSServer_In( 'GET', ~sess, $IdP,
-                                       <'oidc_req', $App, h(fingerprint(<pk(skProver), pkVerifier>), salt), 
+                                       <'oidc_req', $App, h(fingerprint(<pk(skProver), pkVerifier>), salt),
                                         ~n, s256(code_verifier), $RedirectURL>
                          ) ▶₂ #vr.9 )
                     case TLSClientToServer_case_1
@@ -4874,8 +4876,8 @@ next
                        (∃ #h. (IsNonce( ~n ) @ #h) ∧ ¬(last(#h))) )
                   case case_1
                   solve( TLSServer_In( 'GET', ~sess.1, $IdP.1,
-                                       <'oidc_req', $App.1, 
-                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1, 
+                                       <'oidc_req', $App.1,
+                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1,
                                         s256(code_verifier), $RedirectURL.1>
                          ) ▶₂ #vr.9 )
                     case TLSClientToServer_case_1
@@ -5395,8 +5397,8 @@ next
                 next
                   case case_2
                   solve( TLSServer_In( 'GET', ~sess.1, $IdP.1,
-                                       <'oidc_req', $App.1, 
-                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1, 
+                                       <'oidc_req', $App.1,
+                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1,
                                         s256(code_verifier), $RedirectURL.1>
                          ) ▶₂ #vr.9 )
                     case TLSClientToServer_case_1
@@ -5932,8 +5934,8 @@ next
                        (∃ #h. (IsNonce( ~n.1 ) @ #h) ∧ ¬(last(#h))) )
                   case case_1
                   solve( TLSServer_In( 'GET', ~sess.1, $IdP.1,
-                                       <'oidc_req', $App.1, 
-                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1, 
+                                       <'oidc_req', $App.1,
+                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1,
                                         s256(code_verifier), $RedirectURL.1>
                          ) ▶₂ #vr.9 )
                     case TLSClientToServer_case_1
@@ -6453,8 +6455,8 @@ next
                 next
                   case case_2
                   solve( TLSServer_In( 'GET', ~sess.1, $IdP.1,
-                                       <'oidc_req', $App.1, 
-                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1, 
+                                       <'oidc_req', $App.1,
+                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1,
                                         s256(code_verifier), $RedirectURL.1>
                          ) ▶₂ #vr.9 )
                     case TLSClientToServer_case_1
@@ -6978,8 +6980,8 @@ next
                        (∃ #h. (IsNonce( ~n.1 ) @ #h) ∧ ¬(last(#h))) )
                   case case_1
                   solve( TLSServer_In( 'GET', ~sess.1, $IdP.1,
-                                       <'oidc_req', $App.1, 
-                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1, 
+                                       <'oidc_req', $App.1,
+                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1,
                                         s256(code_verifier), $RedirectURL.1>
                          ) ▶₂ #vr.9 )
                     case TLSClientToServer_case_1
@@ -7499,8 +7501,8 @@ next
                 next
                   case case_2
                   solve( TLSServer_In( 'GET', ~sess.1, $IdP.1,
-                                       <'oidc_req', $App.1, 
-                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1, 
+                                       <'oidc_req', $App.1,
+                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1,
                                         s256(code_verifier), $RedirectURL.1>
                          ) ▶₂ #vr.9 )
                     case TLSClientToServer_case_1
@@ -8028,8 +8030,8 @@ next
                        (∃ #h. (IsNonce( ~n.1 ) @ #h) ∧ ¬(last(#h))) )
                   case case_1
                   solve( TLSServer_In( 'GET', ~sess.1, $IdP.1,
-                                       <'oidc_req', $App.1, 
-                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1, 
+                                       <'oidc_req', $App.1,
+                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1,
                                         s256(code_verifier), $RedirectURL.1>
                          ) ▶₂ #vr.9 )
                     case TLSClientToServer_case_1
@@ -8549,8 +8551,8 @@ next
                 next
                   case case_2
                   solve( TLSServer_In( 'GET', ~sess.1, $IdP.1,
-                                       <'oidc_req', $App.1, 
-                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1, 
+                                       <'oidc_req', $App.1,
+                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1,
                                         s256(code_verifier), $RedirectURL.1>
                          ) ▶₂ #vr.9 )
                     case TLSClientToServer_case_1
@@ -9074,8 +9076,8 @@ next
                        (∃ #h. (IsNonce( ~n.1 ) @ #h) ∧ ¬(last(#h))) )
                   case case_1
                   solve( TLSServer_In( 'GET', ~sess.1, $IdP.1,
-                                       <'oidc_req', $App.1, 
-                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1, 
+                                       <'oidc_req', $App.1,
+                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1,
                                         s256(code_verifier), $RedirectURL.1>
                          ) ▶₂ #vr.9 )
                     case TLSClientToServer_case_1
@@ -9595,8 +9597,8 @@ next
                 next
                   case case_2
                   solve( TLSServer_In( 'GET', ~sess.1, $IdP.1,
-                                       <'oidc_req', $App.1, 
-                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1, 
+                                       <'oidc_req', $App.1,
+                                        h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt), ~n.1,
                                         s256(code_verifier), $RedirectURL.1>
                          ) ▶₂ #vr.9 )
                     case TLSClientToServer_case_1
@@ -10338,7 +10340,7 @@ rule (modulo E) OIDCTokenForward[color=#b4d9ef]:
              = signature.47
        z     = verify(signature.47,
                       <$IdP.35, $App.34, $Username.38, nonce.43, hash.42>, pkIdP.44)
-    
+
     2. $App  = $App.69
        $IdP  = $IdP.70
        $Username
@@ -10379,10 +10381,10 @@ next
            ) ▶₅ #t1 )
       case OIDCAppCodeRedirect_case_1
       solve( TLSClient_In( 'POST', ~sessPost, $IdP,
-                           <'token', 
+                           <'token',
                             <$IdP, $App, $Username, nonce, h(fingerprint(<pk(~sk), pkVerifier>), ~n)
-                            >, 
-                            sign(<$IdP, $App, $Username, nonce, 
+                            >,
+                            sign(<$IdP, $App, $Username, nonce,
                                   h(fingerprint(<pk(~sk), pkVerifier>), ~n)>,
                                  x)
                            >
@@ -10422,10 +10424,10 @@ next
     next
       case OIDCAppCodeRedirect_case_2
       solve( TLSClient_In( 'POST', ~sessPost, $IdP,
-                           <'token', 
+                           <'token',
                             <$IdP, $App, $Username, nonce, h(fingerprint(<pk(~sk), pkVerifier>), ~n)
-                            >, 
-                            sign(<$IdP, $App, $Username, nonce, 
+                            >,
+                            sign(<$IdP, $App, $Username, nonce,
                                   h(fingerprint(<pk(~sk), pkVerifier>), ~n)>,
                                  x)
                            >
@@ -10465,10 +10467,10 @@ next
     next
       case OIDCAppCodeRedirect_case_3
       solve( TLSClient_In( 'POST', ~sessPost, $IdP,
-                           <'token', 
+                           <'token',
                             <$IdP, $App, $Username, nonce, h(fingerprint(<pk(~sk), pkVerifier>), ~n)
-                            >, 
-                            sign(<$IdP, $App, $Username, nonce, 
+                            >,
+                            sign(<$IdP, $App, $Username, nonce,
                                   h(fingerprint(<pk(~sk), pkVerifier>), ~n)>,
                                  x)
                            >
@@ -10508,10 +10510,10 @@ next
     next
       case OIDCAppCodeRedirect_case_4
       solve( TLSClient_In( 'POST', ~sessPost, $IdP,
-                           <'token', 
+                           <'token',
                             <$IdP, $App, $Username, nonce, h(fingerprint(<pk(~sk), pkVerifier>), ~n)
-                            >, 
-                            sign(<$IdP, $App, $Username, nonce, 
+                            >,
+                            sign(<$IdP, $App, $Username, nonce,
                                   h(fingerprint(<pk(~sk), pkVerifier>), ~n)>,
                                  x)
                            >
@@ -10551,10 +10553,10 @@ next
     next
       case OIDCAppCodeRedirect_case_5
       solve( TLSClient_In( 'POST', ~sessPost, $IdP,
-                           <'token', 
+                           <'token',
                             <$IdP, $App, $Username, nonce, h(fingerprint(<pk(~sk), pkVerifier>), ~n)
-                            >, 
-                            sign(<$IdP, $App, $Username, nonce, 
+                            >,
+                            sign(<$IdP, $App, $Username, nonce,
                                   h(fingerprint(<pk(~sk), pkVerifier>), ~n)>,
                                  x)
                            >
@@ -10594,10 +10596,10 @@ next
     next
       case OIDCAppCodeRedirect_case_6
       solve( TLSClient_In( 'POST', ~sessPost, $IdP,
-                           <'token', 
+                           <'token',
                             <$IdP, $App, $Username, nonce, h(fingerprint(<pk(~sk), pkVerifier>), ~n)
-                            >, 
-                            sign(<$IdP, $App, $Username, nonce, 
+                            >,
+                            sign(<$IdP, $App, $Username, nonce,
                                   h(fingerprint(<pk(~sk), pkVerifier>), ~n)>,
                                  x)
                            >
@@ -10637,10 +10639,10 @@ next
     next
       case OIDCAppCodeRedirect_case_7
       solve( TLSClient_In( 'POST', ~sessPost, $IdP,
-                           <'token', 
+                           <'token',
                             <$IdP, $App, $Username, nonce, h(fingerprint(<pk(~sk), pkVerifier>), ~n)
-                            >, 
-                            sign(<$IdP, $App, $Username, nonce, 
+                            >,
+                            sign(<$IdP, $App, $Username, nonce,
                                   h(fingerprint(<pk(~sk), pkVerifier>), ~n)>,
                                  x)
                            >
@@ -10680,10 +10682,10 @@ next
     next
       case OIDCAppCodeRedirect_case_8
       solve( TLSClient_In( 'POST', ~sessPost, $IdP,
-                           <'token', 
+                           <'token',
                             <$IdP, $App, $Username, nonce, h(fingerprint(<pk(~sk), pkVerifier>), ~n)
-                            >, 
-                            sign(<$IdP, $App, $Username, nonce, 
+                            >,
+                            sign(<$IdP, $App, $Username, nonce,
                                   h(fingerprint(<pk(~sk), pkVerifier>), ~n)>,
                                  x)
                            >
@@ -10728,10 +10730,10 @@ next
            ) ▶₅ #t1 )
       case OIDCAppCodeRedirect_case_1
       solve( TLSClient_In( 'POST', ~sessPost, $IdP,
-                           <'token', 
+                           <'token',
                             <$IdP, $App, $Username, nonce, h(fingerprint(<pk(~sk), pkVerifier>), ~n)
-                            >, 
-                            sign(<$IdP, $App, $Username, nonce, 
+                            >,
+                            sign(<$IdP, $App, $Username, nonce,
                                   h(fingerprint(<pk(~sk), pkVerifier>), ~n)>,
                                  x)
                            >
@@ -10764,10 +10766,10 @@ next
     next
       case OIDCAppCodeRedirect_case_2
       solve( TLSClient_In( 'POST', ~sessPost, $IdP,
-                           <'token', 
+                           <'token',
                             <$IdP, $App, $Username, nonce, h(fingerprint(<pk(~sk), pkVerifier>), ~n)
-                            >, 
-                            sign(<$IdP, $App, $Username, nonce, 
+                            >,
+                            sign(<$IdP, $App, $Username, nonce,
                                   h(fingerprint(<pk(~sk), pkVerifier>), ~n)>,
                                  x)
                            >
@@ -10800,10 +10802,10 @@ next
     next
       case OIDCAppCodeRedirect_case_3
       solve( TLSClient_In( 'POST', ~sessPost, $IdP,
-                           <'token', 
+                           <'token',
                             <$IdP, $App, $Username, nonce, h(fingerprint(<pk(~sk), pkVerifier>), ~n)
-                            >, 
-                            sign(<$IdP, $App, $Username, nonce, 
+                            >,
+                            sign(<$IdP, $App, $Username, nonce,
                                   h(fingerprint(<pk(~sk), pkVerifier>), ~n)>,
                                  x)
                            >
@@ -10836,10 +10838,10 @@ next
     next
       case OIDCAppCodeRedirect_case_4
       solve( TLSClient_In( 'POST', ~sessPost, $IdP,
-                           <'token', 
+                           <'token',
                             <$IdP, $App, $Username, nonce, h(fingerprint(<pk(~sk), pkVerifier>), ~n)
-                            >, 
-                            sign(<$IdP, $App, $Username, nonce, 
+                            >,
+                            sign(<$IdP, $App, $Username, nonce,
                                   h(fingerprint(<pk(~sk), pkVerifier>), ~n)>,
                                  x)
                            >
@@ -10872,10 +10874,10 @@ next
     next
       case OIDCAppCodeRedirect_case_5
       solve( TLSClient_In( 'POST', ~sessPost, $IdP,
-                           <'token', 
+                           <'token',
                             <$IdP, $App, $Username, nonce, h(fingerprint(<pk(~sk), pkVerifier>), ~n)
-                            >, 
-                            sign(<$IdP, $App, $Username, nonce, 
+                            >,
+                            sign(<$IdP, $App, $Username, nonce,
                                   h(fingerprint(<pk(~sk), pkVerifier>), ~n)>,
                                  x)
                            >
@@ -10908,10 +10910,10 @@ next
     next
       case OIDCAppCodeRedirect_case_6
       solve( TLSClient_In( 'POST', ~sessPost, $IdP,
-                           <'token', 
+                           <'token',
                             <$IdP, $App, $Username, nonce, h(fingerprint(<pk(~sk), pkVerifier>), ~n)
-                            >, 
-                            sign(<$IdP, $App, $Username, nonce, 
+                            >,
+                            sign(<$IdP, $App, $Username, nonce,
                                   h(fingerprint(<pk(~sk), pkVerifier>), ~n)>,
                                  x)
                            >
@@ -10944,10 +10946,10 @@ next
     next
       case OIDCAppCodeRedirect_case_7
       solve( TLSClient_In( 'POST', ~sessPost, $IdP,
-                           <'token', 
+                           <'token',
                             <$IdP, $App, $Username, nonce, h(fingerprint(<pk(~sk), pkVerifier>), ~n)
-                            >, 
-                            sign(<$IdP, $App, $Username, nonce, 
+                            >,
+                            sign(<$IdP, $App, $Username, nonce,
                                   h(fingerprint(<pk(~sk), pkVerifier>), ~n)>,
                                  x)
                            >
@@ -10980,10 +10982,10 @@ next
     next
       case OIDCAppCodeRedirect_case_8
       solve( TLSClient_In( 'POST', ~sessPost, $IdP,
-                           <'token', 
+                           <'token',
                             <$IdP, $App, $Username, nonce, h(fingerprint(<pk(~sk), pkVerifier>), ~n)
-                            >, 
-                            sign(<$IdP, $App, $Username, nonce, 
+                            >,
+                            sign(<$IdP, $App, $Username, nonce,
                                   h(fingerprint(<pk(~sk), pkVerifier>), ~n)>,
                                  x)
                            >
@@ -11045,10 +11047,10 @@ guarded formula characterizing all counter-examples:
 */
 simplify
 solve( TLSClient_In( 'POST', ~sessPost, $IdP,
-                     <'token', 
-                      <$IdP, $App, $Username, nonce, 
-                       h(fingerprint(<pk(skProver), pkVerifier>), salt)>, 
-                      sign(<$IdP, $App, $Username, nonce, 
+                     <'token',
+                      <$IdP, $App, $Username, nonce,
+                       h(fingerprint(<pk(skProver), pkVerifier>), salt)>,
+                      sign(<$IdP, $App, $Username, nonce,
                             h(fingerprint(<pk(skProver), pkVerifier>), salt)>,
                            x)
                      >
@@ -11057,10 +11059,10 @@ solve( TLSClient_In( 'POST', ~sessPost, $IdP,
   solve( (code = ~code.1)  ∥ (∃ #x. (CompromisedDomain( $IdP ) @ #x)) )
     case case_1
     solve( TLSClient_In( 'POST', ~sessPost.1, $IdP,
-                         <'token', 
-                          <$IdP, $App.1, $Username.1, nonce.1, 
-                           h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt.1)>, 
-                          sign(<$IdP, $App.1, $Username.1, nonce.1, 
+                         <'token',
+                          <$IdP, $App.1, $Username.1, nonce.1,
+                           h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt.1)>,
+                          sign(<$IdP, $App.1, $Username.1, nonce.1,
                                 h(fingerprint(<pk(skProver.1), pkVerifier.1>), salt.1)>,
                                x)
                          >
@@ -11632,7 +11634,7 @@ rule (modulo E) OIDCTokenReceive[color=#b4d9ef]:
              = signature.27
        z     = verify(signature.27,
                       <$IdP.18, $App.17, $Username.20, nonce.24, hash.23>, pkIdP.25)
-    
+
     2. $App  = $App.25
        $IdP  = $IdP.26
        $Username
@@ -11663,7 +11665,7 @@ lemma Executability:
        (SendIdP( idp, acc, m2 ) @ #t5)) ∧
       (Sender( s2 ) @ #t5)) ∧
      (s1 = s2)) ∧
-    (¬(∃ #x. SomeCompromise( ) @ #x))"
+    (¬(∃ #x. AdversaryActivity( ) @ #x))"
 /*
 guarded formula characterizing all satisfying traces:
 "∃ verifier proverKey idp acc verifierKey m1 m2 s1 s2 #t1 #t2 #t3 #t4
@@ -11677,7 +11679,7 @@ guarded formula characterizing all satisfying traces:
   (Sender( s2 ) @ #t5) ∧
   (s1 = s2)
  ∧
-  ∀ #x. (SomeCompromise( ) @ #x) ⇒ ⊥"
+  ∀ #x. (AdversaryActivity( ) @ #x) ⇒ ⊥"
 */
 by sorry
 
@@ -11802,7 +11804,7 @@ WARNING: the following wellformedness checks failed!
 Check presence of the --prove/--lemma arguments in theory
 =========================================================
 
-  --> 'OTPChallenge' from arguments do(es) not correspond to a specified lemma in the theory 
+  --> 'OTPChallenge' from arguments do(es) not correspond to a specified lemma in the theory
 */
 
 /*

@@ -29,7 +29,7 @@ restriction Inequality:
 
 
 rule (modulo E) Phone:
-   [ Fr( ~sim ) ]
+   [ ]
   --[ ClaimNumber( $A, $Number ), IsPhoneNumber( $Number ) ]->
    [ !Phone( $A, $Number ) ]
 
@@ -43,7 +43,9 @@ rule (modulo E) SMSOut[color=#ffffff]:
   /* has exactly the trivial AC variant */
 
 rule (modulo E) AdversarySMSOut[color=#ff6961]:
-   [ In( sms ), !Phone( $A, $Number ) ] --> [ !SMS( $Number, sms ) ]
+   [ In( sms ), !Phone( $A, $Number ) ]
+  --[ AdversaryActivity( ) ]->
+   [ !SMS( $Number, sms ) ]
 
   /* has exactly the trivial AC variant */
 
@@ -54,7 +56,7 @@ rule (modulo E) SMSIn[color=#ffffff]:
 
 rule (modulo E) SMSLeak[color=#ff6961]:
    [ !SMS( $Number, sms ) ]
-  --[ SMSLeak( ), SomeCompromise( ) ]->
+  --[ SMSLeak( ), AdversaryActivity( ) ]->
    [ Out( sms ) ]
 
   /* has exactly the trivial AC variant */
@@ -66,7 +68,7 @@ rule (modulo E) Domain:
 
 rule (modulo E) DomainCompromise:
    [ !Domain( $Domain ) ]
-  --[ CompromisedDomain( $Domain ), SomeCompromise( ) ]->
+  --[ CompromisedDomain( $Domain ), AdversaryActivity( ) ]->
    [ !DomainCompromise( $Domain ) ]
 
   /* has exactly the trivial AC variant */
@@ -98,7 +100,7 @@ rule (modulo E) TLSAdversaryServerOut[color=#ff6961]:
    [
    In( method ), In( ~sess ), In( msg ), !DomainCompromise( $Domain )
    ]
-  -->
+  --[ AdversaryActivity( ) ]->
    [ !TLSServer( method, ~sess, $Domain, msg ) ]
 
   /* has exactly the trivial AC variant */
@@ -115,7 +117,7 @@ rule (modulo E) TLSClientToAdversaryServer[color=#ff6961]:
    !TLSClient( method, ~sess, $Domain, msg ),
    !DomainCompromise( $Domain )
    ]
-  -->
+  --[ AdversaryActivity( ) ]->
    [ Out( msg ), Out( ~sess ) ]
 
   /* has exactly the trivial AC variant */
@@ -132,7 +134,7 @@ rule (modulo E) TLSServerToAdversaryClient[color=#ff6961]:
    In( ~adversarySess ),
    !TLSServer( method, ~adversarySess, $Domain, msg )
    ]
-  -->
+  --[ AdversaryActivity( ) ]->
    [ Out( msg ) ]
 
   /* has exactly the trivial AC variant */
@@ -146,7 +148,7 @@ rule (modulo E) IdPSetup:
 
 rule (modulo E) IdPCompromise[color=#ff6961]:
    [ !IdPLtk( $IdP, idpSk ) ]
-  --[ CompromisedIdP( $IdP ), SomeCompromise( ) ]->
+  --[ CompromisedIdP( $IdP ), AdversaryActivity( ) ]->
    [ !IdPCompromise( $IdP ), Out( idpSk ) ]
 
   /* has exactly the trivial AC variant */
@@ -198,7 +200,7 @@ restriction AccountsUnique:
 
 rule (modulo E) IdPAccountCompromise[color=#ff6961]:
    [ !IdPAccount( $A, $IdP, $Username, ~pw ) ]
-  --[ CompromisedAccount( $A, $IdP, $Username ), SomeCompromise( )
+  --[ CompromisedAccount( $A, $IdP, $Username ), AdversaryActivity( )
   ]->
    [ Out( ~pw ) ]
 
@@ -226,7 +228,7 @@ rule (modulo E) IdPPublishServer:
 
 rule (modulo E) IdPPublishCompromised:
    [ !IdPCompromise( $IdP ), In( m ) ]
-  -->
+  --[ AdversaryActivity( ) ]->
    [ !Publish( $IdP, $Username, m ) ]
 
   /* has exactly the trivial AC variant */
@@ -325,7 +327,7 @@ rule (modulo E) MessagingFin[color=#fdfd96]:
 
 rule (modulo E) MessagingCompromise[color=#ff6961]:
    [ !MessagingLtkUser( $A, $Number, ~sk )[no_precomp] ]
-  --[ CompromisedMessaging( $A, pk(~sk) ), SomeCompromise( ) ]->
+  --[ CompromisedMessaging( $A, pk(~sk) ), AdversaryActivity( ) ]->
    [ Out( ~sk ) ]
 
   /* has exactly the trivial AC variant */
@@ -442,7 +444,7 @@ rule (modulo E) ClearSessionStore:
 
 rule (modulo E) LinkClick[color=#ff6961]:
    [ Fr( ~sess ), In( m ), !Domain( $Domain ) ]
-  --[ SomeCompromise( ) ]->
+  --[ AdversaryActivity( ) ]->
    [
    TLSClient_Out( 'GET', ~sess, $Domain, m ),
    !Browser( $Prover, ~sess )
@@ -952,7 +954,7 @@ lemma Executability:
        (SendIdP( idp, acc, m2 ) @ #t5)) ∧
       (Sender( s2 ) @ #t5)) ∧
      (s1 = s2)) ∧
-    (¬(∃ #x. SomeCompromise( ) @ #x))"
+    (¬(∃ #x. AdversaryActivity( ) @ #x))"
 /*
 guarded formula characterizing all satisfying traces:
 "∃ verifier proverKey idp acc verifierKey m1 m2 s1 s2 #t1 #t2 #t3
@@ -966,7 +968,7 @@ guarded formula characterizing all satisfying traces:
   (Sender( s2 ) @ #t5) ∧
   (s1 = s2)
  ∧
-  ∀ #x. (SomeCompromise( ) @ #x) ⇒ ⊥"
+  ∀ #x. (AdversaryActivity( ) @ #x) ⇒ ⊥"
 */
 simplify
 solve( Sender( s1 ) @ #t4 )
@@ -1374,7 +1376,8 @@ solve( Sender( s1 ) @ #t4 )
                                                                         by sorry
                                                                       next
                                                                         case SMSIn_case_4
-                                                                        by sorry
+                                                                        by contradiction
+                                                                           /* from formulas */
                                                                       qed
                                                                     next
                                                                       case MessagingChallenge_case_2
@@ -1394,7 +1397,7 @@ solve( Sender( s1 ) @ #t4 )
                                                                 qed
                                                               next
                                                                 case SMSIn_case_2
-                                                                by sorry
+                                                                by contradiction /* from formulas */
                                                               qed
                                                             next
                                                               case TLSClientToServer_case_2
@@ -1476,7 +1479,7 @@ solve( Sender( s1 ) @ #t4 )
                           by sorry
                         next
                           case SMSIn_case_4
-                          by sorry
+                          by contradiction /* from formulas */
                         qed
                       qed
                     next
