@@ -35,8 +35,10 @@ restriction UniqueRedirectURLs:
         & IsRedirectURL(idp2, app2, url) @ #t3)
     ==> (idp1 = idp2 & app1 = app2)"
 
-// Clients need to memorize which query they issued last
-rule InitSessionStore:
+// Clients need to memorize which query they issued last. We prefix rule name
+// with 0_ s.t. it comes first in case ordering of the executability lemma.
+// Otherwise, there is an infinite loop.
+rule 0_InitSessionStore:
   []
   --[ OnlyOnce(<'init_session_store', $User>) ]->
   [ SessionStore($User, 'null', 'null') ]
