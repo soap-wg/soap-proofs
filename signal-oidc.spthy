@@ -117,8 +117,6 @@ rule OIDCIdPIssueCode[color=#B4D9EF]:
   , TLSServer_In('GET', ~sess, $IdP, <'login', $Username, pw>) ]
   --[ IsCode(~code)
     , MustBeNonce(nonce)
-    // NOTE: It is not good that I make this annotation at the IdP. I must
-    // investigate this at a later point.
     , SOAPIdP($User, nonce, $IdP, $Username) ]->
   [ TLSClient_Out('GET', ~sess, $RedirectURL, <'code', ~code, nonce>)
   , St_OIDCIdP_Code($IdP, $Username, $Client, $RedirectURL, ~code, hash, nonce, code_challenge) ]

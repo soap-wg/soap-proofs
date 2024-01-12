@@ -13,8 +13,6 @@ equations:
 
 
 
-heuristic: o "./oracle.py"
-
 restriction OnlyOnce:
   "∀ t #x #y. ((OnlyOnce( t ) @ #x) ∧ (OnlyOnce( t ) @ #y)) ⇒ (#x = #y)"
   // safety formula

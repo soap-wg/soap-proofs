@@ -1,7 +1,7 @@
 # SOAP - Formal Proofs
 
 This repository contains the formal model and proofs for SOAP, a Social Authentication protocol.
-The models were encoded for the [Tamarin model checker](https://tamarin-prover.github.io/).
+The models were encoded for the [Tamarin model checker](https://tamarin-prover.github.io/), version 1.8.0.
 
 As the model (`signal-oidc.spthy`) is very large and proofs take a considerable time (in the range of hours), the directory `/proofs` contains the finished proofs for every lemma in the theory.
 The README in that directory describes which proof-file contains proofs for which lemma.
